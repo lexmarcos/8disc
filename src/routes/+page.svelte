@@ -33,6 +33,13 @@
       compress: 'Compress',
       compressing: 'Compressing',
       download: 'Download',
+      createdBy: 'Created by Markzuel',
+      social: {
+        github: 'Markzuel on GitHub',
+        instagram: 'Markzuel on Instagram',
+        x: 'Markzuel on X',
+        linkedin: 'Markzuel on LinkedIn'
+      },
       status: {
         chooseVideo: 'Choose a video',
         readingMetadata: 'Reading metadata',
@@ -70,6 +77,13 @@
       compress: 'Comprimir',
       compressing: 'Comprimindo',
       download: 'Baixar',
+      createdBy: 'Criado por Markzuel',
+      social: {
+        github: 'Markzuel no GitHub',
+        instagram: 'Markzuel no Instagram',
+        x: 'Markzuel no X',
+        linkedin: 'Markzuel no LinkedIn'
+      },
       status: {
         chooseVideo: 'Escolha um video',
         readingMetadata: 'Lendo metadados',
@@ -594,5 +608,61 @@
         {/if}
       </div>
     </section>
+
+    <footer class="flex flex-col items-center justify-between gap-4 border-t border-[#fbfbff]/25 py-5 text-[#d8d7ff] sm:flex-row">
+      <p class="text-xs font-bold uppercase tracking-[0.18em]">{text.createdBy}</p>
+
+      <nav class="flex items-center gap-2" aria-label={text.createdBy}>
+        <a
+          class="grid size-10 place-items-center border border-[#fbfbff]/35 text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+          href="https://github.com/lexmarcos"
+          target="_blank"
+          rel="noreferrer"
+          aria-label={text.social.github}
+        >
+          <svg class="size-5" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.29 9.41 7.86 10.94.58.1.79-.25.79-.56v-2.16c-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a10.98 10.98 0 0 1 5.76 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.16c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+          </svg>
+        </a>
+
+        <a
+          class="grid size-10 place-items-center border border-[#fbfbff]/35 text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+          href="https://www.instagram.com/markzuel/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label={text.social.instagram}
+        >
+          <svg class="size-5" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
+            <rect width="18" height="18" x="3" y="3" rx="5" />
+            <circle cx="12" cy="12" r="4" />
+            <circle cx="17.5" cy="6.5" r="1.1" fill="currentColor" stroke="none" />
+          </svg>
+        </a>
+
+        <a
+          class="grid size-10 place-items-center border border-[#fbfbff]/35 text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+          href="https://x.com/mark_zuel"
+          target="_blank"
+          rel="noreferrer"
+          aria-label={text.social.x}
+        >
+          <svg class="size-4" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M18.25 2.5h3.38l-7.38 8.43 8.68 11.47h-6.8l-5.32-6.96-6.09 6.96H1.34l7.89-9.02L.91 2.5h6.97l4.81 6.36 5.56-6.36Zm-1.19 17.88h1.87L6.86 4.41h-2L17.06 20.38Z" />
+          </svg>
+        </a>
+
+        <a
+          class="grid size-10 place-items-center border border-[#fbfbff]/35 text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+          href="https://www.linkedin.com/in/marcosuelfilho/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label={text.social.linkedin}
+        >
+          <svg class="size-5" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M4.98 3.5a2.5 2.5 0 1 1 0 5.01 2.5 2.5 0 0 1 0-5.01ZM3 9.74h3.96V21H3V9.74Zm6.17 0h3.79v1.54h.05c.53-.95 1.82-1.95 3.74-1.95 4 0 4.74 2.63 4.74 6.05V21h-3.95v-4.98c0-1.19-.02-2.71-1.65-2.71-1.66 0-1.91 1.29-1.91 2.62V21H9.17V9.74Z" />
+          </svg>
+        </a>
+      </nav>
+    </footer>
   </div>
 </main>
