@@ -461,9 +461,9 @@
 
   <div class="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col">
     <header class="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-[#d8d7ff]">
-      <div class="grid size-9 place-items-center border border-[#fbfbff]/70 bg-[#fbfbff] text-[13px] font-black text-[#1713c8] shadow-[6px_6px_0_rgba(255,255,255,.18)]">
-        8D
-      </div>
+      <a class="block size-14 shrink-0 sm:size-16" href="/" aria-label="8disc">
+        <img class="size-full object-contain" src="/Logo.svg" alt="8disc" />
+      </a>
       <span class="hidden sm:inline">{text.headerMeta}</span>
       <div class="flex items-center border border-[#fbfbff]/35" role="group" aria-label={text.languageLabel}>
         {#each languageOptions as option}
