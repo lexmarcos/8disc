@@ -13,7 +13,6 @@
   type EncodePlan = {
     videoKbps: number;
     audioKbps: number;
-    width: number | null;
   };
 
   const translations = {
@@ -368,7 +367,6 @@
       `${plan.videoKbps}k`,
       '-bufsize',
       `${plan.videoKbps * 2}k`,
-      ...(plan.width ? ['-vf', `scale=${plan.width}:-2`] : []),
       '-pix_fmt',
       'yuv420p',
       '-c:a',
@@ -387,13 +385,10 @@
     const preferredAudio = target <= 8 ? 48 : target <= 16 ? 64 : 96;
     const audioKbps = Math.max(32, Math.min(preferredAudio, Math.floor(totalKbps * 0.22)));
     const videoKbps = Math.max(80, totalKbps - audioKbps);
-    const maxWidth = target <= 8 ? 640 : target <= 16 ? 720 : target <= 25 ? 960 : target <= 50 ? 1280 : 1920;
-    const width = info.width ? makeEven(Math.min(info.width, maxWidth)) : null;
 
     return {
       audioKbps,
-      videoKbps,
-      width
+      videoKbps
     };
   }
 
@@ -456,10 +451,6 @@
     return name.replace(/\.[^/.]+$/, '') || 'video';
   }
 
-  function makeEven(value: number) {
-    const rounded = Math.max(2, Math.floor(value));
-    return rounded % 2 === 0 ? rounded : rounded - 1;
-  }
 </script>
 
 <svelte:head>
