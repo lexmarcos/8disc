@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="https://i.imgur.com/Q8WxIFi.png" alt="8disc logo" width="180" />
+  <img src="https://i.imgur.com/Q8WxIFi.png" alt="8disc logo" width="780" />
 </p>
-
-<h1 align="center">8disc</h1>
 
 <p align="center">
   A local video compressor for making files fit Discord upload limits.
