@@ -37,6 +37,19 @@
     outputSize: number;
     encoder: string;
   };
+  type ResizeDirection =
+    | 'East'
+    | 'North'
+    | 'NorthEast'
+    | 'NorthWest'
+    | 'South'
+    | 'SouthEast'
+    | 'SouthWest'
+    | 'West';
+  type ResizeHandle = {
+    direction: ResizeDirection;
+    className: string;
+  };
 
   const translations = {
     en: {
@@ -160,6 +173,16 @@
   const MIN_VIDEO_KBPS = 80;
   const desktopDownloadUrl = 'https://github.com/lexmarcos/8disc/releases/latest';
   const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
+  const resizeHandles: ResizeHandle[] = [
+    { direction: 'North', className: 'absolute inset-x-3 top-0 z-40 h-1 cursor-n-resize' },
+    { direction: 'South', className: 'absolute inset-x-3 bottom-0 z-40 h-1 cursor-s-resize' },
+    { direction: 'West', className: 'absolute inset-y-3 left-0 z-40 w-1 cursor-w-resize' },
+    { direction: 'East', className: 'absolute inset-y-3 right-0 z-40 w-1 cursor-e-resize' },
+    { direction: 'NorthWest', className: 'absolute left-0 top-0 z-40 size-3 cursor-nw-resize' },
+    { direction: 'NorthEast', className: 'absolute right-0 top-0 z-40 size-3 cursor-ne-resize' },
+    { direction: 'SouthWest', className: 'absolute bottom-0 left-0 z-40 size-3 cursor-sw-resize' },
+    { direction: 'SouthEast', className: 'absolute bottom-0 right-0 z-40 size-3 cursor-se-resize' }
+  ];
   const RESOLUTION_TIERS = [
     { longEdge: 3840, minVideoKbps: 12000 },
     { longEdge: 2560, minVideoKbps: 7000 },
@@ -257,6 +280,28 @@
 
   function isTauriRuntime() {
     return browser && '__TAURI_INTERNALS__' in window;
+  }
+
+  async function controlWindow(action: 'minimize' | 'toggleMaximize' | 'close') {
+    if (!isDesktop) return;
+
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const appWindow = getCurrentWindow();
+
+    if (action === 'minimize') {
+      await appWindow.minimize();
+    } else if (action === 'toggleMaximize') {
+      await appWindow.toggleMaximize();
+    } else {
+      await appWindow.close();
+    }
+  }
+
+  async function resizeWindow(direction: ResizeDirection) {
+    if (!isDesktop) return;
+
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().startResizeDragging(direction);
   }
 
   async function handleFileInput(event: Event) {
@@ -812,13 +857,76 @@
   <meta name="description" content={text.metaDescription} />
 </svelte:head>
 
-<main class="relative min-h-screen overflow-hidden bg-[#1713c8] px-4 py-4 text-[#fbfbff] sm:px-6">
+<main
+  class={[
+    'relative min-h-screen overflow-hidden bg-[#1713c8] px-4 pb-4 text-[#fbfbff] sm:px-6',
+    isDesktop ? 'pt-[3.75rem]' : 'pt-4'
+  ]}
+>
   <div
     class="pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(255,255,255,.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.18)_1px,transparent_1px)] [background-size:72px_72px]"
   ></div>
   <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-[#fbfbff]/40"></div>
 
-  <div class="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col">
+  {#if isDesktop}
+    {#each resizeHandles as handle}
+      <button
+        type="button"
+        class={[handle.className, 'border-0 bg-transparent p-0']}
+        aria-label={`Resize ${handle.direction}`}
+        tabindex="-1"
+        onpointerdown={(event) => {
+          if (event.button !== 0) return;
+
+          event.preventDefault();
+          void resizeWindow(handle.direction);
+        }}
+      ></button>
+    {/each}
+
+    <div
+      class="absolute inset-x-0 top-0 z-30 flex h-11 select-none items-center justify-between border-b border-[#fbfbff]/20 bg-[#1713c8] text-[#fbfbff]"
+      data-tauri-drag-region
+    >
+      <div class="flex min-w-0 items-center gap-3 px-3" data-tauri-drag-region>
+        <img class="size-6 shrink-0 object-contain" src="/Logo.svg" alt="" data-tauri-drag-region />
+        <span class="truncate text-sm font-bold tracking-normal" data-tauri-drag-region>8disc</span>
+      </div>
+      <div class="flex h-full items-stretch">
+        <button
+          type="button"
+          class="grid w-12 place-items-center text-lg leading-none text-[#fbfbff] transition hover:bg-[#fbfbff]/15 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#fbfbff]"
+          aria-label="Minimize"
+          onclick={() => void controlWindow('minimize')}
+        >
+          -
+        </button>
+        <button
+          type="button"
+          class="grid w-12 place-items-center text-sm leading-none text-[#fbfbff] transition hover:bg-[#fbfbff]/15 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#fbfbff]"
+          aria-label="Maximize"
+          onclick={() => void controlWindow('toggleMaximize')}
+        >
+          □
+        </button>
+        <button
+          type="button"
+          class="grid w-12 place-items-center text-lg leading-none text-[#fbfbff] transition hover:bg-[#e81123] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#fbfbff]"
+          aria-label="Close"
+          onclick={() => void controlWindow('close')}
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  <div
+    class={[
+      'relative mx-auto flex w-full max-w-4xl flex-col',
+      isDesktop ? 'min-h-[calc(100vh-4.75rem)]' : 'min-h-[calc(100vh-2rem)]'
+    ]}
+  >
     <header class="flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.18em] text-[#d8d7ff]">
       <a class="block size-14 shrink-0 sm:size-16" href="/" aria-label="8disc">
         <img class="size-full object-contain" src="/Logo.svg" alt="8disc" />

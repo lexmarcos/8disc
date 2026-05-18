@@ -13,14 +13,15 @@
     "windows": [
       {
         "title": "8disc",
-        "width": 1100,
+        "width": 1265,
         "height": 900,
         "minWidth": 720,
-        "minHeight": 680
+        "minHeight": 680,
+        "decorations": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {
