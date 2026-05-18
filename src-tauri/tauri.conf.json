@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "8disc",
+  "version": "0.1.0",
+  "identifier": "com.markzuel.8disc",
+  "build": {
+    "beforeDevCommand": "pnpm dev:tauri",
+    "beforeBuildCommand": "pnpm build:web",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "8disc",
+        "width": 1100,
+        "height": 900,
+        "minWidth": 720,
+        "minHeight": 680
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"]
+  }
+}
