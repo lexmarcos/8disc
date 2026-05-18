@@ -1,11 +1,20 @@
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::{process::CommandEvent, ShellExt};
+
+const SIZE_RETRY_LOWER_BOUND: f64 = 0.94;
+const SIZE_RETRY_TIGHTENING: f64 = 0.96;
+const SIZE_RETRY_EXPANSION: f64 = 0.98;
+const MIN_VIDEO_KBPS: u32 = 80;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VideoProbe {
+    path: String,
     name: String,
     size: u64,
     duration: f64,
@@ -37,6 +46,7 @@ struct CompressRequest {
     input_path: String,
     output_path: String,
     plan: EncodePlan,
+    target_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,6 +63,19 @@ struct CompressionProgress {
     job_id: String,
     percent: u8,
     status: String,
+    encoder: String,
+}
+
+#[derive(Debug, Clone)]
+struct OutputPaths {
+    final_output: PathBuf,
+    temp_output: PathBuf,
+    backup_output: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct EncodeAttempt {
+    output_size: u64,
     encoder: String,
 }
 
@@ -89,11 +112,13 @@ async fn compress_video(
     app: AppHandle,
     request: CompressRequest,
 ) -> Result<CompressResult, String> {
+    let output_paths =
+        prepare_output_paths(&request.input_path, &request.output_path, &request.job_id)?;
     let probe = probe_video_inner(&app, &request.input_path).await?;
     let encoders = detect_encoders_inner(&app).await?;
     let mut errors = Vec::new();
 
-    for encoder in encoders {
+    'encoder_loop: for encoder in encoders {
         emit_progress(
             &app,
             &request.job_id,
@@ -106,10 +131,55 @@ async fn compress_video(
             &encoder.name,
         );
 
-        match run_ffmpeg_encode(&app, &request, &probe, &encoder.name).await {
-            Ok(result) => return Ok(result),
+        let mut plan = request.plan.clone();
+        match run_ffmpeg_encode(&app, &request, &probe, &encoder.name, &plan, &output_paths).await {
+            Ok(mut attempt) => {
+                for _ in 0..2 {
+                    let Some(adjusted_plan) =
+                        create_size_adjusted_plan(&plan, request.target_bytes, attempt.output_size)
+                    else {
+                        break;
+                    };
+
+                    let _ = fs::remove_file(&output_paths.temp_output);
+                    plan = adjusted_plan;
+                    emit_progress(&app, &request.job_id, 0, "adjustingTarget", &encoder.name);
+                    match run_ffmpeg_encode(
+                        &app,
+                        &request,
+                        &probe,
+                        &encoder.name,
+                        &plan,
+                        &output_paths,
+                    )
+                    .await
+                    {
+                        Ok(result) => attempt = result,
+                        Err(error) => {
+                            let _ = fs::remove_file(&output_paths.temp_output);
+                            errors.push(format!("{} adjusted: {}", encoder.name, error));
+                            continue 'encoder_loop;
+                        }
+                    }
+                }
+
+                if let Err(error) = publish_output(&output_paths) {
+                    let _ = fs::remove_file(&output_paths.temp_output);
+                    return Err(error);
+                }
+                let final_size = fs::metadata(&output_paths.final_output)
+                    .map_err(|error| format!("Could not read compressed file: {error}"))?
+                    .len();
+                emit_progress(&app, &request.job_id, 100, "fileReady", &attempt.encoder);
+
+                return Ok(CompressResult {
+                    output_path: output_paths.final_output.to_string_lossy().into_owned(),
+                    output_size: final_size,
+                    encoder: attempt.encoder,
+                });
+            }
             Err(error) => {
-                let _ = fs::remove_file(&request.output_path);
+                let _ = fs::remove_file(&output_paths.temp_output);
                 errors.push(format!("{}: {}", encoder.name, error));
             }
         }
@@ -164,6 +234,7 @@ async fn probe_video_inner(app: &AppHandle, path: &str) -> Result<VideoProbe, St
         .unwrap_or(1.0);
 
     Ok(VideoProbe {
+        path: path.to_string(),
         name: Path::new(path)
             .file_name()
             .and_then(|name| name.to_str())
@@ -227,8 +298,11 @@ async fn run_ffmpeg_encode(
     request: &CompressRequest,
     probe: &VideoProbe,
     encoder: &str,
-) -> Result<CompressResult, String> {
-    let args = build_ffmpeg_args(request, encoder);
+    plan: &EncodePlan,
+    output_paths: &OutputPaths,
+) -> Result<EncodeAttempt, String> {
+    let _ = fs::remove_file(&output_paths.temp_output);
+    let args = build_ffmpeg_args(request, plan, encoder, &output_paths.temp_output);
     let (mut rx, _child) = app
         .shell()
         .sidecar("ffmpeg")
@@ -268,20 +342,22 @@ async fn run_ffmpeg_encode(
         return Err(stderr.trim().to_string());
     }
 
-    let output_size = fs::metadata(&request.output_path)
+    let output_size = fs::metadata(&output_paths.temp_output)
         .map_err(|error| format!("Could not read compressed file: {error}"))?
         .len();
 
-    emit_progress(app, &request.job_id, 100, "fileReady", encoder);
-
-    Ok(CompressResult {
-        output_path: request.output_path.clone(),
+    Ok(EncodeAttempt {
         output_size,
         encoder: encoder.to_string(),
     })
 }
 
-fn build_ffmpeg_args(request: &CompressRequest, encoder: &str) -> Vec<String> {
+fn build_ffmpeg_args(
+    request: &CompressRequest,
+    plan: &EncodePlan,
+    encoder: &str,
+    output_path: &Path,
+) -> Vec<String> {
     let mut args = vec![
         "-y".to_string(),
         "-hide_banner".to_string(),
@@ -304,14 +380,14 @@ fn build_ffmpeg_args(request: &CompressRequest, encoder: &str) -> Vec<String> {
 
     args.extend([
         "-b:v".to_string(),
-        format!("{}k", request.plan.video_kbps),
+        format!("{}k", plan.video_kbps),
         "-maxrate".to_string(),
-        format!("{}k", request.plan.video_kbps),
+        format!("{}k", plan.video_kbps),
         "-bufsize".to_string(),
-        format!("{}k", request.plan.video_kbps * 2),
+        format!("{}k", plan.video_kbps * 2),
     ]);
 
-    if let (Some(width), Some(height)) = (request.plan.width, request.plan.height) {
+    if let (Some(width), Some(height)) = (plan.width, plan.height) {
         args.extend(["-vf".to_string(), format!("scale={width}:{height}")]);
     }
 
@@ -321,13 +397,163 @@ fn build_ffmpeg_args(request: &CompressRequest, encoder: &str) -> Vec<String> {
         "-c:a".to_string(),
         "aac".to_string(),
         "-b:a".to_string(),
-        format!("{}k", request.plan.audio_kbps),
+        format!("{}k", plan.audio_kbps),
         "-movflags".to_string(),
         "+faststart".to_string(),
-        request.output_path.clone(),
+        output_path.to_string_lossy().into_owned(),
     ]);
 
     args
+}
+
+fn prepare_output_paths(
+    input_path: &str,
+    output_path: &str,
+    job_id: &str,
+) -> Result<OutputPaths, String> {
+    let input = fs::canonicalize(input_path)
+        .map_err(|error| format!("Could not resolve input file: {error}"))?;
+    let output = PathBuf::from(output_path);
+    let output_file = output
+        .file_name()
+        .ok_or_else(|| "Choose a valid output file.".to_string())?;
+    let output_parent = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let canonical_parent = fs::canonicalize(output_parent)
+        .map_err(|error| format!("Could not resolve output folder: {error}"))?;
+    let final_output = canonical_parent.join(output_file);
+
+    if paths_match(&input, &final_output) {
+        return Err("Output file must be different from the input video.".to_string());
+    }
+
+    Ok(OutputPaths {
+        temp_output: job_path(&final_output, job_id, "tmp"),
+        backup_output: job_path(&final_output, job_id, "backup"),
+        final_output,
+    })
+}
+
+fn publish_output(paths: &OutputPaths) -> Result<(), String> {
+    if !paths.temp_output.exists() {
+        return Err("Compressed temporary file was not created.".to_string());
+    }
+
+    if paths.backup_output.exists() {
+        fs::remove_file(&paths.backup_output)
+            .map_err(|error| format!("Could not remove stale backup file: {error}"))?;
+    }
+
+    let mut has_backup = false;
+    if paths.final_output.exists() {
+        let metadata = fs::metadata(&paths.final_output)
+            .map_err(|error| format!("Could not inspect output file: {error}"))?;
+        if !metadata.is_file() {
+            return Err("Output path exists and is not a file.".to_string());
+        }
+
+        fs::rename(&paths.final_output, &paths.backup_output)
+            .map_err(|error| format!("Could not prepare existing output file: {error}"))?;
+        has_backup = true;
+    }
+
+    if let Err(error) = fs::rename(&paths.temp_output, &paths.final_output) {
+        if has_backup {
+            let _ = fs::rename(&paths.backup_output, &paths.final_output);
+        }
+        return Err(format!(
+            "Could not move compressed file into place: {error}"
+        ));
+    }
+
+    if has_backup {
+        let _ = fs::remove_file(&paths.backup_output);
+    }
+
+    Ok(())
+}
+
+fn create_size_adjusted_plan(
+    plan: &EncodePlan,
+    target_bytes: u64,
+    output_size: u64,
+) -> Option<EncodePlan> {
+    if target_bytes == 0 || output_size == 0 {
+        return None;
+    }
+
+    let ratio = target_bytes as f64 / output_size as f64;
+    if output_size > target_bytes && plan.video_kbps > MIN_VIDEO_KBPS + 10 {
+        let mut adjusted_plan = plan.clone();
+        adjusted_plan.video_kbps =
+            ((plan.video_kbps as f64 * ratio * SIZE_RETRY_TIGHTENING).floor() as u32)
+                .max(MIN_VIDEO_KBPS);
+        return Some(adjusted_plan);
+    }
+
+    if output_size < (target_bytes as f64 * SIZE_RETRY_LOWER_BOUND) as u64 && ratio > 1.0 {
+        let mut adjusted_plan = plan.clone();
+        adjusted_plan.video_kbps = ((plan.video_kbps as f64 * ratio * SIZE_RETRY_EXPANSION).floor()
+            as u32)
+            .max(plan.video_kbps + 1);
+        return Some(adjusted_plan);
+    }
+
+    None
+}
+
+fn job_path(output_path: &Path, job_id: &str, role: &str) -> PathBuf {
+    let safe_job_id = sanitize_job_id(job_id);
+    let stem = output_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("video");
+    let extension = output_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{value}"))
+        .unwrap_or_default();
+    let file_name = format!(".{stem}.{safe_job_id}.8disc.{role}{extension}");
+
+    output_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(file_name)
+}
+
+fn sanitize_job_id(job_id: &str) -> String {
+    let sanitized: String = job_id
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if sanitized.is_empty() {
+        "job".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn paths_match(left: &Path, right: &Path) -> bool {
+    path_key(left) == path_key(right)
+}
+
+#[cfg(windows)]
+fn path_key(path: &Path) -> String {
+    path.to_string_lossy().replace('/', "\\").to_lowercase()
+}
+
+#[cfg(not(windows))]
+fn path_key(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 fn consume_progress(
@@ -377,6 +603,135 @@ fn emit_progress(app: &AppHandle, job_id: &str, percent: u8, status: &str, encod
 
 fn sidecar_error(error: tauri_plugin_shell::Error) -> String {
     format!("FFmpeg sidecar is not ready. Run pnpm prepare-ffmpeg-sidecar first. {error}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        env,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn unique_test_dir(name: &str) -> PathBuf {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        env::temp_dir().join(format!("8disc-{name}-{now}"))
+    }
+
+    #[test]
+    fn size_adjusted_plan_reduces_video_bitrate_with_floor() {
+        let plan = EncodePlan {
+            video_kbps: 1000,
+            audio_kbps: 64,
+            width: Some(1280),
+            height: Some(720),
+        };
+
+        let adjusted = create_size_adjusted_plan(&plan, 500, 1000).expect("plan should tighten");
+
+        assert_eq!(adjusted.video_kbps, 480);
+        assert_eq!(adjusted.audio_kbps, plan.audio_kbps);
+        assert_eq!(adjusted.width, plan.width);
+        assert_eq!(adjusted.height, plan.height);
+    }
+
+    #[test]
+    fn size_adjusted_plan_keeps_video_bitrate_at_minimum() {
+        let plan = EncodePlan {
+            video_kbps: 91,
+            audio_kbps: 32,
+            width: None,
+            height: None,
+        };
+
+        let adjusted = create_size_adjusted_plan(&plan, 1, 1000).expect("plan should tighten");
+
+        assert_eq!(adjusted.video_kbps, 80);
+    }
+
+    #[test]
+    fn size_adjusted_plan_increases_video_bitrate_when_output_is_too_small() {
+        let plan = EncodePlan {
+            video_kbps: 1000,
+            audio_kbps: 64,
+            width: None,
+            height: None,
+        };
+
+        let adjusted = create_size_adjusted_plan(&plan, 1000, 900).expect("plan should expand");
+
+        assert_eq!(adjusted.video_kbps, 1088);
+        assert_eq!(adjusted.audio_kbps, plan.audio_kbps);
+    }
+
+    #[test]
+    fn size_adjusted_plan_is_not_created_when_output_is_close_to_target() {
+        let plan = EncodePlan {
+            video_kbps: 1000,
+            audio_kbps: 64,
+            width: None,
+            height: None,
+        };
+
+        assert!(create_size_adjusted_plan(&plan, 1000, 950).is_none());
+    }
+
+    #[test]
+    fn output_paths_reject_same_input_and_output() {
+        let dir = unique_test_dir("same-path");
+        fs::create_dir_all(&dir).expect("test dir should be created");
+        let input = dir.join("video.mp4");
+        fs::write(&input, b"input").expect("input file should be written");
+
+        let error = prepare_output_paths(
+            input.to_str().expect("input path should be utf8"),
+            input.to_str().expect("output path should be utf8"),
+            "job",
+        )
+        .expect_err("same input/output should fail");
+
+        assert!(error.contains("Output file must be different"));
+
+        let _ = fs::remove_file(&input);
+        let _ = fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn output_paths_create_sanitized_temp_and_backup_names() {
+        let dir = unique_test_dir("paths");
+        fs::create_dir_all(&dir).expect("test dir should be created");
+        let input = dir.join("input.mp4");
+        let output = dir.join("result.mp4");
+        fs::write(&input, b"input").expect("input file should be written");
+
+        let paths = prepare_output_paths(
+            input.to_str().expect("input path should be utf8"),
+            output.to_str().expect("output path should be utf8"),
+            "job/1:bad",
+        )
+        .expect("paths should be prepared");
+
+        assert_eq!(
+            paths
+                .temp_output
+                .file_name()
+                .and_then(|value| value.to_str()),
+            Some(".result.job_1_bad.8disc.tmp.mp4")
+        );
+        assert_eq!(
+            paths
+                .backup_output
+                .file_name()
+                .and_then(|value| value.to_str()),
+            Some(".result.job_1_bad.8disc.backup.mp4")
+        );
+
+        let _ = fs::remove_file(&input);
+        let _ = fs::remove_dir(&dir);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

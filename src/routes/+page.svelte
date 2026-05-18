@@ -153,6 +153,11 @@
   ] as const;
   const MB = 1024 * 1024;
   const MAX_INPUT_BYTES = 2 * 1024 * MB;
+  const TARGET_BITRATE_UTILIZATION = 0.97;
+  const SIZE_RETRY_LOWER_BOUND = 0.94;
+  const SIZE_RETRY_TIGHTENING = 0.96;
+  const SIZE_RETRY_EXPANSION = 0.98;
+  const MIN_VIDEO_KBPS = 80;
   const desktopDownloadUrl = 'https://github.com/lexmarcos/8disc/releases/latest';
   const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
   const RESOLUTION_TIERS = [
@@ -164,7 +169,7 @@
   ] as const;
 
   let locale: Locale = 'en';
-  let selectedTarget: TargetSize = 16;
+  let selectedTarget: TargetSize = 8;
   let isDesktop = isTauriRuntime();
   let videoFile: File | null = null;
   let desktopVideo: DesktopVideo | null = null;
@@ -184,6 +189,7 @@
   let compressedSize = 0;
   let desktopOutputPath = '';
   let activeEncoder = '';
+  let errorDetail = '';
 
   $: text = translations[locale];
   $: selectedVideoName = desktopVideo?.name ?? videoFile?.name ?? '';
@@ -285,6 +291,7 @@
 
   async function selectFile(file: File | null) {
     errorKey = '';
+    errorDetail = '';
     clearCompressedOutput();
     desktopVideo = null;
 
@@ -322,26 +329,29 @@
 
   async function selectDesktopFile() {
     errorKey = '';
+    errorDetail = '';
     clearCompressedOutput();
     desktopOutputPath = '';
 
-    const { open } = await import('@tauri-apps/plugin-dialog');
-    const { invoke } = await import('@tauri-apps/api/core');
-    const selected = await open({
-      multiple: false,
-      filters: [{ name: 'Videos', extensions: videoExtensions }]
-    });
-
-    if (!selected || Array.isArray(selected)) {
-      return;
-    }
-
-    videoFile = null;
-    desktopVideo = null;
-    videoInfo = null;
-    statusKey = 'readingMetadata';
-
     try {
+      const [{ open }, { invoke }] = await Promise.all([
+        import('@tauri-apps/plugin-dialog'),
+        import('@tauri-apps/api/core')
+      ]);
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Videos', extensions: videoExtensions }]
+      });
+
+      if (!selected || Array.isArray(selected)) {
+        return;
+      }
+
+      videoFile = null;
+      desktopVideo = null;
+      videoInfo = null;
+      statusKey = 'readingMetadata';
+
       const probe = await invoke<DesktopVideo>('probe_video', { path: selected });
       desktopVideo = probe;
       videoInfo = {
@@ -350,8 +360,8 @@
         height: probe.height
       };
       statusKey = 'ready';
-    } catch {
-      errorKey = 'compressFailed';
+    } catch (error) {
+      setCompressionError(error);
       statusKey = 'compressionFailed';
     }
   }
@@ -364,7 +374,14 @@
 
     if (!videoFile) return;
 
+    const jobTarget = selectedTarget;
+    const jobTargetBytes = jobTarget * MB;
+    let cleanupEncoder: FFmpegInstance | null = null;
+    let inputName = '';
+    const outputName = 'output.mp4';
+
     errorKey = '';
+    errorDetail = '';
     clearCompressedOutput();
     isLoadingEngine = true;
     isCompressing = false;
@@ -372,6 +389,7 @@
 
     try {
       const encoder = await loadEncoder();
+      cleanupEncoder = encoder;
       const helper = fetchFile;
 
       if (!helper) {
@@ -384,98 +402,107 @@
       statusKey = 'calculating';
 
       const info = videoInfo ?? (await readVideoInfo(videoFile));
-      const inputName = `input.${getExtension(videoFile.name)}`;
-      const outputName = 'output.mp4';
-      const basePlan = createEncodePlan(info, selectedTarget);
+      inputName = `input.${getExtension(videoFile.name)}`;
+      const basePlan = createEncodePlan(info, jobTarget);
 
       await safeDelete(encoder, inputName);
       await safeDelete(encoder, outputName);
       await encoder.writeFile(inputName, await helper(videoFile));
 
       statusKey = 'compressingLocal';
-      let result = await runEncode(encoder, inputName, outputName, basePlan);
-      let resultBlob = createVideoBlob(result);
+      let activePlan = basePlan;
+      let resultBlob = createVideoBlob(await runEncode(encoder, inputName, outputName, activePlan));
 
-      if (resultBlob.size > targetBytes && basePlan.videoKbps > 90) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const adjustedPlan = createSizeAdjustedPlan(activePlan, jobTargetBytes, resultBlob.size);
+        if (!adjustedPlan) {
+          break;
+        }
+
+        activePlan = adjustedPlan;
         statusKey = 'adjustingTarget';
-        const ratio = targetBytes / resultBlob.size;
-        const tighterPlan = {
-          ...basePlan,
-          videoKbps: Math.max(80, Math.floor(basePlan.videoKbps * ratio * 0.88))
-        };
-        result = await runEncode(encoder, inputName, outputName, tighterPlan);
-        resultBlob = createVideoBlob(result);
+        resultBlob = createVideoBlob(await runEncode(encoder, inputName, outputName, activePlan));
       }
 
       compressedUrl = URL.createObjectURL(resultBlob);
       compressedSize = resultBlob.size;
-      compressedName = `${withoutExtension(videoFile.name)}-${selectedTarget}mb.mp4`;
+      compressedName = `${withoutExtension(videoFile.name)}-${jobTarget}mb.mp4`;
       progress = 100;
-      statusKey = resultBlob.size <= targetBytes ? 'fileReady' : 'fileReadyOversized';
-
-      await safeDelete(encoder, inputName);
-      await safeDelete(encoder, outputName);
+      statusKey = resultBlob.size <= jobTargetBytes ? 'fileReady' : 'fileReadyOversized';
     } catch (error) {
       if (!errorKey) {
         errorKey = 'compressFailed';
       }
+      errorDetail = formatErrorDetail(error);
       statusKey = 'compressionFailed';
       progress = 0;
     } finally {
+      if (cleanupEncoder) {
+        if (inputName) {
+          await safeDelete(cleanupEncoder, inputName);
+        }
+        await safeDelete(cleanupEncoder, outputName);
+      }
       isLoadingEngine = false;
       isCompressing = false;
     }
   }
 
   async function compressDesktopVideo(video: DesktopVideo) {
+    const jobTarget = selectedTarget;
+    const jobTargetBytes = jobTarget * MB;
+
     errorKey = '';
+    errorDetail = '';
     clearCompressedOutput();
     desktopOutputPath = '';
     activeEncoder = '';
     progress = 0;
     statusKey = 'selectingOutput';
-
-    const [{ invoke }, { listen }, { save }] = await Promise.all([
-      import('@tauri-apps/api/core'),
-      import('@tauri-apps/api/event'),
-      import('@tauri-apps/plugin-dialog')
-    ]);
-    const outputPath = await save({
-      defaultPath: `${withoutExtension(video.name)}-${selectedTarget}mb.mp4`,
-      filters: [{ name: 'MP4 video', extensions: ['mp4'] }]
-    });
-
-    if (!outputPath) {
-      statusKey = 'ready';
-      return;
-    }
-
-    isCompressing = true;
-    statusKey = 'detectingEncoder';
-
-    const jobId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const unlisten = await listen<DesktopCompressionProgress>(
-      'compression-progress',
-      ({ payload }) => {
-        if (payload.jobId !== jobId) return;
-
-        progress = payload.percent;
-        activeEncoder = payload.encoder;
-
-        if (isStatusKey(payload.status)) {
-          statusKey = payload.status;
-        }
-      }
-    );
+    let unlisten: (() => void) | null = null;
 
     try {
-      const plan = createEncodePlan(video, selectedTarget);
+      const [{ invoke }, { listen }, { save }] = await Promise.all([
+        import('@tauri-apps/api/core'),
+        import('@tauri-apps/api/event'),
+        import('@tauri-apps/plugin-dialog')
+      ]);
+      const outputPath = await save({
+        defaultPath: `${withoutExtension(video.name)}-${jobTarget}mb.mp4`,
+        filters: [{ name: 'MP4 video', extensions: ['mp4'] }]
+      });
+
+      if (!outputPath) {
+        statusKey = 'ready';
+        return;
+      }
+
+      isCompressing = true;
+      statusKey = 'detectingEncoder';
+
+      const jobId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      unlisten = await listen<DesktopCompressionProgress>(
+        'compression-progress',
+        ({ payload }) => {
+          if (payload.jobId !== jobId) return;
+
+          progress = payload.percent;
+          activeEncoder = payload.encoder;
+
+          if (isStatusKey(payload.status)) {
+            statusKey = payload.status;
+          }
+        }
+      );
+
+      const plan = createEncodePlan(video, jobTarget);
       const result = await invoke<DesktopCompressionResult>('compress_video', {
         request: {
           jobId,
           inputPath: video.path,
           outputPath,
-          plan
+          plan,
+          targetBytes: jobTargetBytes
         }
       });
 
@@ -484,13 +511,13 @@
       compressedSize = result.outputSize;
       progress = 100;
       activeEncoder = result.encoder;
-      statusKey = result.outputSize <= targetBytes ? 'fileReady' : 'fileReadyOversized';
-    } catch {
-      errorKey = 'compressFailed';
+      statusKey = result.outputSize <= jobTargetBytes ? 'fileReady' : 'fileReadyOversized';
+    } catch (error) {
+      setCompressionError(error);
       statusKey = 'compressionFailed';
       progress = 0;
     } finally {
-      unlisten();
+      unlisten?.();
       isCompressing = false;
     }
   }
@@ -609,10 +636,12 @@
 
   function createEncodePlan(info: VideoInfo, target: TargetSize): EncodePlan {
     const duration = Math.max(info.duration || 1, 1);
-    const totalKbps = Math.floor(((target * MB * 8) / duration / 1000) * 0.9);
+    const totalKbps = Math.floor(
+      ((target * MB * 8) / duration / 1000) * TARGET_BITRATE_UTILIZATION
+    );
     const preferredAudio = target <= 8 ? 48 : target <= 16 ? 64 : 96;
     const audioKbps = Math.max(32, Math.min(preferredAudio, Math.floor(totalKbps * 0.22)));
-    const videoKbps = Math.max(80, totalKbps - audioKbps);
+    const videoKbps = Math.max(MIN_VIDEO_KBPS, totalKbps - audioKbps);
     const scale = chooseScale(info, videoKbps);
 
     return {
@@ -621,6 +650,39 @@
       width: scale?.width ?? null,
       height: scale?.height ?? null
     };
+  }
+
+  function createSizeAdjustedPlan(
+    plan: EncodePlan,
+    targetByteSize: number,
+    outputByteSize: number
+  ): EncodePlan | null {
+    if (targetByteSize <= 0 || outputByteSize <= 0) {
+      return null;
+    }
+
+    const ratio = targetByteSize / outputByteSize;
+    if (outputByteSize > targetByteSize && plan.videoKbps > MIN_VIDEO_KBPS + 10) {
+      return {
+        ...plan,
+        videoKbps: Math.max(
+          MIN_VIDEO_KBPS,
+          Math.floor(plan.videoKbps * ratio * SIZE_RETRY_TIGHTENING)
+        )
+      };
+    }
+
+    if (outputByteSize < targetByteSize * SIZE_RETRY_LOWER_BOUND && ratio > 1) {
+      return {
+        ...plan,
+        videoKbps: Math.max(
+          plan.videoKbps + 1,
+          Math.floor(plan.videoKbps * ratio * SIZE_RETRY_EXPANSION)
+        )
+      };
+    }
+
+    return null;
   }
 
   function chooseScale(info: VideoInfo, videoKbps: number) {
@@ -686,6 +748,32 @@
     desktopOutputPath = '';
     compressedSize = 0;
     activeEncoder = '';
+  }
+
+  function setCompressionError(error: unknown, key: ErrorKey = 'compressFailed') {
+    errorKey = key;
+    errorDetail = formatErrorDetail(error);
+  }
+
+  function formatErrorDetail(error: unknown) {
+    let detail = '';
+
+    if (typeof error === 'string') {
+      detail = error;
+    } else if (error instanceof Error) {
+      detail = error.message;
+    } else if (error && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      detail = typeof message === 'string' ? message : '';
+    } else if (error !== undefined && error !== null) {
+      try {
+        detail = JSON.stringify(error);
+      } catch {
+        detail = String(error);
+      }
+    }
+
+    return detail.replace(/\s+/g, ' ').trim().slice(0, 240);
   }
 
   function createVideoBlob(data: Uint8Array) {
@@ -828,13 +916,18 @@
           <button
             type="button"
             class={[
-              'min-h-20 border px-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#fbfbff]',
+              'min-h-20 border px-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#fbfbff] disabled:cursor-not-allowed disabled:opacity-60',
               selectedTarget === size
                 ? 'border-[#fbfbff] bg-[#fbfbff] text-[#1713c8] shadow-[6px_6px_0_rgba(255,255,255,.18)]'
                 : 'border-[#fbfbff]/35 bg-[#1410bd]/70 text-[#fbfbff] hover:border-[#fbfbff] hover:bg-[#1c18d7]'
             ]}
             aria-pressed={selectedTarget === size}
-            onclick={() => (selectedTarget = size)}
+            disabled={isLoadingEngine || isCompressing}
+            onclick={() => {
+              if (!isLoadingEngine && !isCompressing) {
+                selectedTarget = size;
+              }
+            }}
           >
             <span class="block text-2xl font-black">{size}</span>
             <span class="text-xs uppercase tracking-[0.18em] opacity-75">{text.megabytes}</span>
@@ -879,9 +972,12 @@
           ></div>
         </div>
         {#if errorText}
-          <p class="mt-3 border border-[#fbfbff]/40 bg-[#fbfbff] px-4 py-3 text-sm font-bold text-[#1713c8]">
-            {errorText}
-          </p>
+          <div class="mt-3 border border-[#fbfbff]/40 bg-[#fbfbff] px-4 py-3 text-sm font-bold text-[#1713c8]">
+            <p>{errorText}</p>
+            {#if errorDetail}
+              <p class="mt-2 text-xs font-semibold normal-case tracking-normal opacity-75">{errorDetail}</p>
+            {/if}
+          </div>
         {/if}
       </div>
     </section>
