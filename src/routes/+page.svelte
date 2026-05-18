@@ -10,9 +10,32 @@
     width: number;
     height: number;
   };
+  type DesktopVideo = VideoInfo & {
+    path: string;
+    name: string;
+    size: number;
+  };
   type EncodePlan = {
     videoKbps: number;
     audioKbps: number;
+    width: number | null;
+    height: number | null;
+  };
+  type FfmpegLoadConfig = {
+    coreURL: string;
+    wasmURL: string;
+    workerURL?: string;
+  };
+  type DesktopCompressionProgress = {
+    jobId: string;
+    percent: number;
+    status: StatusKey;
+    encoder: string;
+  };
+  type DesktopCompressionResult = {
+    outputPath: string;
+    outputSize: number;
+    encoder: string;
   };
 
   const translations = {
@@ -21,7 +44,9 @@
       metaTitle: '8disc - Local video compressor',
       metaDescription: 'Compress videos locally to 8 MB, 16 MB, 25 MB, 50 MB, or 100 MB.',
       headerMeta: 'local / wasm / mp4',
+      desktopHeaderMeta: 'local / gpu / mp4',
       languageLabel: 'Language',
+      downloadApp: 'Download app',
       eyebrow: 'local compressor',
       headline: 'Compress to fit on Discord',
       uploadAria: 'Video upload',
@@ -46,6 +71,10 @@
         preparingFfmpeg: 'Preparing FFmpeg',
         loadingFfmpeg: 'Loading FFmpeg',
         calculating: 'Calculating compression',
+        selectingOutput: 'Choose output file',
+        detectingEncoder: 'Detecting encoder',
+        usingGpuEncoder: 'Using GPU encoder',
+        usingCpuFallback: 'Using CPU fallback',
         compressingLocal: 'Compressing locally',
         adjustingTarget: 'Tuning for the target',
         fileReady: 'File ready',
@@ -54,6 +83,7 @@
       },
       errors: {
         invalidFile: 'Upload a video file.',
+        fileTooLarge: 'This video is too large for browser compression. Use a file up to 2 GB.',
         readerFailed: 'Could not load the file reader.',
         compressFailed: 'Could not compress this video.'
       },
@@ -65,7 +95,9 @@
       metaDescription:
         'Comprima videos localmente para 8 MB, 16 MB, 25 MB, 50 MB ou 100 MB.',
       headerMeta: 'local / wasm / mp4',
+      desktopHeaderMeta: 'local / gpu / mp4',
       languageLabel: 'Idioma',
+      downloadApp: 'Baixar app',
       eyebrow: 'compressor local',
       headline: 'Comprima para caber no Discord',
       uploadAria: 'Upload de video',
@@ -90,6 +122,10 @@
         preparingFfmpeg: 'Preparando FFmpeg',
         loadingFfmpeg: 'Carregando FFmpeg',
         calculating: 'Calculando compressao',
+        selectingOutput: 'Escolha o arquivo final',
+        detectingEncoder: 'Detectando encoder',
+        usingGpuEncoder: 'Usando encoder da GPU',
+        usingCpuFallback: 'Usando fallback na CPU',
         compressingLocal: 'Comprimindo localmente',
         adjustingTarget: 'Ajustando para a meta',
         fileReady: 'Arquivo pronto',
@@ -98,6 +134,7 @@
       },
       errors: {
         invalidFile: 'Envie um arquivo de video.',
+        fileTooLarge: 'Este video e grande demais para compressao no navegador. Use um arquivo de ate 2 GB.',
         readerFailed: 'Nao foi possivel carregar o leitor de arquivos.',
         compressFailed: 'Nao foi possivel comprimir o video.'
       },
@@ -115,10 +152,22 @@
     { code: 'pt', label: 'PT' }
   ] as const;
   const MB = 1024 * 1024;
+  const MAX_INPUT_BYTES = 2 * 1024 * MB;
+  const desktopDownloadUrl = 'https://github.com/lexmarcos/8disc/releases/latest';
+  const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
+  const RESOLUTION_TIERS = [
+    { longEdge: 3840, minVideoKbps: 12000 },
+    { longEdge: 2560, minVideoKbps: 7000 },
+    { longEdge: 1920, minVideoKbps: 3500 },
+    { longEdge: 1280, minVideoKbps: 1400 },
+    { longEdge: 854, minVideoKbps: 700 }
+  ] as const;
 
   let locale: Locale = 'en';
   let selectedTarget: TargetSize = 16;
+  let isDesktop = isTauriRuntime();
   let videoFile: File | null = null;
+  let desktopVideo: DesktopVideo | null = null;
   let videoInfo: VideoInfo | null = null;
   let fileInput: HTMLInputElement;
   let ffmpeg: FFmpegInstance | null = null;
@@ -133,20 +182,30 @@
   let compressedUrl = '';
   let compressedName = 'compressed-video.mp4';
   let compressedSize = 0;
+  let desktopOutputPath = '';
+  let activeEncoder = '';
 
   $: text = translations[locale];
-  $: canCompress = Boolean(videoFile) && !isLoadingEngine && !isCompressing;
+  $: selectedVideoName = desktopVideo?.name ?? videoFile?.name ?? '';
+  $: selectedVideoSize = desktopVideo?.size ?? videoFile?.size ?? 0;
+  $: hasSelectedVideo = Boolean(desktopVideo || videoFile);
+  $: canCompress = hasSelectedVideo && !errorKey && !isLoadingEngine && !isCompressing;
   $: targetBytes = selectedTarget * MB;
-  $: inputSize = videoFile ? formatBytes(videoFile.size) : '';
+  $: inputSize = selectedVideoSize ? formatBytes(selectedVideoSize) : '';
   $: outputSize = compressedSize ? formatBytes(compressedSize) : '';
   $: engineLabel = isLoadingEngine
     ? text.status.preparingFfmpeg
     : isCompressing
-      ? text.progress(progress)
+      ? progress > 0
+        ? text.progress(progress)
+        : text.status[statusKey]
       : text.status[statusKey];
+  $: engineDetail = activeEncoder ? `${engineLabel} / ${activeEncoder}` : engineLabel;
   $: errorText = errorKey ? text.errors[errorKey] : '';
 
   onMount(() => {
+    isDesktop = isTauriRuntime();
+
     const savedLocale = localStorage.getItem('8disc:locale');
 
     if (isLocale(savedLocale)) {
@@ -186,9 +245,27 @@
     return value === 'en' || value === 'pt';
   }
 
+  function isStatusKey(value: string): value is StatusKey {
+    return value in translations.en.status;
+  }
+
+  function isTauriRuntime() {
+    return browser && '__TAURI_INTERNALS__' in window;
+  }
+
   async function handleFileInput(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     await selectFile(input.files?.[0] ?? null);
+  }
+
+  function handleUploadClick(event: MouseEvent) {
+    event.preventDefault();
+
+    if (isDesktop) {
+      void selectDesktopFile();
+    } else {
+      fileInput?.click();
+    }
   }
 
   function handleDragOver(event: DragEvent) {
@@ -209,6 +286,7 @@
   async function selectFile(file: File | null) {
     errorKey = '';
     clearCompressedOutput();
+    desktopVideo = null;
 
     if (!file) {
       videoFile = null;
@@ -223,6 +301,14 @@
     }
 
     videoFile = file;
+
+    if (file.size > MAX_INPUT_BYTES) {
+      errorKey = 'fileTooLarge';
+      videoInfo = null;
+      statusKey = 'compressionFailed';
+      return;
+    }
+
     statusKey = 'readingMetadata';
 
     try {
@@ -234,7 +320,48 @@
     }
   }
 
+  async function selectDesktopFile() {
+    errorKey = '';
+    clearCompressedOutput();
+    desktopOutputPath = '';
+
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const { invoke } = await import('@tauri-apps/api/core');
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: 'Videos', extensions: videoExtensions }]
+    });
+
+    if (!selected || Array.isArray(selected)) {
+      return;
+    }
+
+    videoFile = null;
+    desktopVideo = null;
+    videoInfo = null;
+    statusKey = 'readingMetadata';
+
+    try {
+      const probe = await invoke<DesktopVideo>('probe_video', { path: selected });
+      desktopVideo = probe;
+      videoInfo = {
+        duration: probe.duration,
+        width: probe.width,
+        height: probe.height
+      };
+      statusKey = 'ready';
+    } catch {
+      errorKey = 'compressFailed';
+      statusKey = 'compressionFailed';
+    }
+  }
+
   async function compressVideo() {
+    if (isDesktop && desktopVideo) {
+      await compressDesktopVideo(desktopVideo);
+      return;
+    }
+
     if (!videoFile) return;
 
     errorKey = '';
@@ -300,6 +427,74 @@
     }
   }
 
+  async function compressDesktopVideo(video: DesktopVideo) {
+    errorKey = '';
+    clearCompressedOutput();
+    desktopOutputPath = '';
+    activeEncoder = '';
+    progress = 0;
+    statusKey = 'selectingOutput';
+
+    const [{ invoke }, { listen }, { save }] = await Promise.all([
+      import('@tauri-apps/api/core'),
+      import('@tauri-apps/api/event'),
+      import('@tauri-apps/plugin-dialog')
+    ]);
+    const outputPath = await save({
+      defaultPath: `${withoutExtension(video.name)}-${selectedTarget}mb.mp4`,
+      filters: [{ name: 'MP4 video', extensions: ['mp4'] }]
+    });
+
+    if (!outputPath) {
+      statusKey = 'ready';
+      return;
+    }
+
+    isCompressing = true;
+    statusKey = 'detectingEncoder';
+
+    const jobId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const unlisten = await listen<DesktopCompressionProgress>(
+      'compression-progress',
+      ({ payload }) => {
+        if (payload.jobId !== jobId) return;
+
+        progress = payload.percent;
+        activeEncoder = payload.encoder;
+
+        if (isStatusKey(payload.status)) {
+          statusKey = payload.status;
+        }
+      }
+    );
+
+    try {
+      const plan = createEncodePlan(video, selectedTarget);
+      const result = await invoke<DesktopCompressionResult>('compress_video', {
+        request: {
+          jobId,
+          inputPath: video.path,
+          outputPath,
+          plan
+        }
+      });
+
+      desktopOutputPath = result.outputPath;
+      compressedName = pathBaseName(result.outputPath);
+      compressedSize = result.outputSize;
+      progress = 100;
+      activeEncoder = result.encoder;
+      statusKey = result.outputSize <= targetBytes ? 'fileReady' : 'fileReadyOversized';
+    } catch {
+      errorKey = 'compressFailed';
+      statusKey = 'compressionFailed';
+      progress = 0;
+    } finally {
+      unlisten();
+      isCompressing = false;
+    }
+  }
+
   async function loadEncoder() {
     if (ffmpeg && fetchFile) {
       return ffmpeg;
@@ -307,12 +502,13 @@
 
     statusKey = 'loadingFfmpeg';
 
-    const [{ FFmpeg }, util, core, wasm] = await Promise.all([
+    const [{ FFmpeg }, util] = await Promise.all([
       import('@ffmpeg/ffmpeg'),
-      import('@ffmpeg/util'),
-      import('@ffmpeg/core?url'),
-      import('@ffmpeg/core/wasm?url')
+      import('@ffmpeg/util')
     ]);
+    const coreConfig = supportsMultithreadEncoder()
+      ? await loadMultithreadCore()
+      : await loadSingleThreadCore();
 
     const instance = new FFmpeg();
     instance.on('progress', ({ progress: ratio }) => {
@@ -321,14 +517,45 @@
       }
     });
 
-    await instance.load({
-      coreURL: core.default,
-      wasmURL: wasm.default
-    });
+    await instance.load(coreConfig);
 
     ffmpeg = instance;
     fetchFile = util.fetchFile as FetchFile;
     return instance;
+  }
+
+  function supportsMultithreadEncoder() {
+    return (
+      browser &&
+      typeof SharedArrayBuffer !== 'undefined' &&
+      globalThis.crossOriginIsolated === true
+    );
+  }
+
+  async function loadSingleThreadCore(): Promise<FfmpegLoadConfig> {
+    const [core, wasm] = await Promise.all([
+      import('@ffmpeg/core?url'),
+      import('@ffmpeg/core/wasm?url')
+    ]);
+
+    return {
+      coreURL: core.default,
+      wasmURL: wasm.default
+    };
+  }
+
+  async function loadMultithreadCore(): Promise<FfmpegLoadConfig> {
+    const [core, wasm, worker] = await Promise.all([
+      import('@ffmpeg/core-mt?url'),
+      import('@ffmpeg/core-mt/wasm?url'),
+      import('@ffmpeg/core-mt/worker?url')
+    ]);
+
+    return {
+      coreURL: core.default,
+      wasmURL: wasm.default,
+      workerURL: worker.default
+    };
   }
 
   async function runEncode(
@@ -367,6 +594,7 @@
       `${plan.videoKbps}k`,
       '-bufsize',
       `${plan.videoKbps * 2}k`,
+      ...(plan.width && plan.height ? ['-vf', `scale=${plan.width}:${plan.height}`] : []),
       '-pix_fmt',
       'yuv420p',
       '-c:a',
@@ -385,11 +613,38 @@
     const preferredAudio = target <= 8 ? 48 : target <= 16 ? 64 : 96;
     const audioKbps = Math.max(32, Math.min(preferredAudio, Math.floor(totalKbps * 0.22)));
     const videoKbps = Math.max(80, totalKbps - audioKbps);
+    const scale = chooseScale(info, videoKbps);
 
     return {
       audioKbps,
-      videoKbps
+      videoKbps,
+      width: scale?.width ?? null,
+      height: scale?.height ?? null
     };
+  }
+
+  function chooseScale(info: VideoInfo, videoKbps: number) {
+    if (!info.width || !info.height) return null;
+
+    const longEdge = Math.max(info.width, info.height);
+    const shortEdge = Math.min(info.width, info.height);
+    const currentTier = RESOLUTION_TIERS.find((tier) => longEdge >= tier.longEdge);
+    const selectedTier =
+      RESOLUTION_TIERS.find(
+        (tier) => longEdge >= tier.longEdge && videoKbps >= tier.minVideoKbps
+      ) ?? RESOLUTION_TIERS[RESOLUTION_TIERS.length - 1];
+
+    if (!currentTier || selectedTier.longEdge >= longEdge) {
+      return null;
+    }
+
+    const ratio = selectedTier.longEdge / longEdge;
+    const scaledLongEdge = makeEven(selectedTier.longEdge);
+    const scaledShortEdge = makeEven(shortEdge * ratio);
+
+    return info.width >= info.height
+      ? { width: scaledLongEdge, height: scaledShortEdge }
+      : { width: scaledShortEdge, height: scaledLongEdge };
   }
 
   function readVideoInfo(file: File) {
@@ -428,7 +683,9 @@
     }
 
     compressedUrl = '';
+    desktopOutputPath = '';
     compressedSize = 0;
+    activeEncoder = '';
   }
 
   function createVideoBlob(data: Uint8Array) {
@@ -451,6 +708,15 @@
     return name.replace(/\.[^/.]+$/, '') || 'video';
   }
 
+  function pathBaseName(path: string) {
+    return path.split(/[\\/]/).pop() || path;
+  }
+
+  function makeEven(value: number) {
+    const rounded = Math.max(2, Math.floor(value));
+    return rounded % 2 === 0 ? rounded : rounded - 1;
+  }
+
 </script>
 
 <svelte:head>
@@ -465,27 +731,40 @@
   <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-[#fbfbff]/40"></div>
 
   <div class="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col">
-    <header class="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-[#d8d7ff]">
+    <header class="flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.18em] text-[#d8d7ff]">
       <a class="block size-14 shrink-0 sm:size-16" href="/" aria-label="8disc">
         <img class="size-full object-contain" src="/Logo.svg" alt="8disc" />
       </a>
-      <span class="hidden sm:inline">{text.headerMeta}</span>
-      <div class="flex items-center border border-[#fbfbff]/35" role="group" aria-label={text.languageLabel}>
-        {#each languageOptions as option}
-          <button
-            type="button"
-            class={[
-              'min-h-8 px-3 text-[10px] font-black uppercase tracking-[0.16em] transition focus:outline-none focus:ring-2 focus:ring-[#fbfbff]',
-              locale === option.code
-                ? 'bg-[#fbfbff] text-[#1713c8]'
-                : 'bg-transparent text-[#d8d7ff] hover:bg-[#fbfbff]/15 hover:text-[#fbfbff]'
-            ]}
-            aria-pressed={locale === option.code}
-            onclick={() => setLocale(option.code)}
+      <span class="hidden sm:inline">{isDesktop ? text.desktopHeaderMeta : text.headerMeta}</span>
+      <div class="flex items-center gap-2">
+        {#if !isDesktop}
+          <a
+            class="grid min-h-8 place-items-center border border-[#fbfbff]/35 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+            href={desktopDownloadUrl}
+            target="_blank"
+            rel="noreferrer"
           >
-            {option.label}
-          </button>
-        {/each}
+            {text.downloadApp}
+          </a>
+        {/if}
+
+        <div class="flex items-center border border-[#fbfbff]/35" role="group" aria-label={text.languageLabel}>
+          {#each languageOptions as option}
+            <button
+              type="button"
+              class={[
+                'min-h-8 px-3 text-[10px] font-black uppercase tracking-[0.16em] transition focus:outline-none focus:ring-2 focus:ring-[#fbfbff]',
+                locale === option.code
+                  ? 'bg-[#fbfbff] text-[#1713c8]'
+                  : 'bg-transparent text-[#d8d7ff] hover:bg-[#fbfbff]/15 hover:text-[#fbfbff]'
+              ]}
+              aria-pressed={locale === option.code}
+              onclick={() => setLocale(option.code)}
+            >
+              {option.label}
+            </button>
+          {/each}
+        </div>
       </div>
     </header>
 
@@ -500,7 +779,17 @@
       </div>
 
       <div class="w-full max-w-2xl">
-        <label
+        <input
+          bind:this={fileInput}
+          class="sr-only"
+          type="file"
+          accept="video/*"
+          disabled={isDesktop}
+          onchange={handleFileInput}
+        />
+
+        <button
+          type="button"
           class={[
             'group flex min-h-48 w-full cursor-pointer flex-col items-center justify-center border border-dashed bg-[#1110aa]/50 p-6 text-center transition',
             isDragging
@@ -508,18 +797,11 @@
               : 'border-[#fbfbff]/45 hover:border-[#fbfbff] hover:bg-[#1c18d7]'
           ]}
           aria-label={text.uploadAria}
+          onclick={handleUploadClick}
           ondragover={handleDragOver}
           ondragleave={handleDragLeave}
           ondrop={handleDrop}
         >
-          <input
-            bind:this={fileInput}
-            class="sr-only"
-            type="file"
-            accept="video/*"
-            onchange={handleFileInput}
-          />
-
           <span
             class={[
               'mb-5 grid size-12 place-items-center border text-xl font-black transition',
@@ -531,14 +813,14 @@
             ↑
           </span>
 
-          {#if videoFile}
-            <span class="max-w-full truncate text-lg font-black">{videoFile.name}</span>
+          {#if hasSelectedVideo}
+            <span class="max-w-full truncate text-lg font-black">{selectedVideoName}</span>
             <span class="mt-2 text-sm text-[#d8d7ff]">{inputSize}</span>
           {:else}
             <span class="text-lg font-black">{text.uploadTitle}</span>
             <span class="mt-2 text-sm text-[#d8d7ff]">{text.uploadSubtitle}</span>
           {/if}
-        </label>
+        </button>
       </div>
 
       <div class="grid w-full max-w-2xl grid-cols-2 gap-2 sm:grid-cols-5" aria-label={text.targetAria}>
@@ -578,12 +860,16 @@
           >
             {text.download} · {outputSize}
           </a>
+        {:else if desktopOutputPath}
+          <div class="grid min-h-14 place-items-center border border-[#fbfbff]/55 bg-[#1410bd] px-5 text-center text-sm font-black uppercase tracking-[0.16em] text-[#fbfbff]">
+            {pathBaseName(desktopOutputPath)} · {outputSize}
+          </div>
         {/if}
       </div>
 
       <div class="w-full max-w-2xl" aria-live="polite">
         <div class="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-[#d8d7ff]">
-          <span>{engineLabel}</span>
+          <span>{engineDetail}</span>
           <span>{selectedTarget} {text.megabytes}</span>
         </div>
         <div class="mt-3 h-1 w-full bg-[#fbfbff]/20">
