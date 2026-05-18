@@ -1,5 +1,6 @@
 .svelte-kit
 build
+release
 node_modules
 src-tauri/target
 src-tauri/binaries/*.exe

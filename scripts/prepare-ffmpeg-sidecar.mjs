@@ -8,9 +8,13 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const binariesDir = join(root, 'src-tauri', 'binaries');
 const targetTriple = process.env.TAURI_TARGET_TRIPLE || detectTargetTriple();
 const exe = targetTriple.includes('windows') ? '.exe' : '';
+const requireChecksums =
+  process.argv.includes('--require-checksums') || process.env.REQUIRE_FFMPEG_CHECKSUMS === '1';
 
 const ffmpegSource = process.env.FFMPEG_BINARY;
 const ffprobeSource = process.env.FFPROBE_BINARY;
+const ffmpegSha256 = process.env.FFMPEG_SHA256;
+const ffprobeSha256 = process.env.FFPROBE_SHA256;
 
 if (!ffmpegSource || !ffprobeSource) {
   throw new Error(
@@ -18,8 +22,14 @@ if (!ffmpegSource || !ffprobeSource) {
   );
 }
 
-copySidecar(ffmpegSource, 'ffmpeg', process.env.FFMPEG_SHA256);
-copySidecar(ffprobeSource, 'ffprobe', process.env.FFPROBE_SHA256);
+if (requireChecksums && (!ffmpegSha256 || !ffprobeSha256)) {
+  throw new Error(
+    'Release sidecar preparation requires FFMPEG_SHA256 and FFPROBE_SHA256. Provide both hashes or run the non-release script.'
+  );
+}
+
+copySidecar(ffmpegSource, 'ffmpeg', ffmpegSha256);
+copySidecar(ffprobeSource, 'ffprobe', ffprobeSha256);
 
 function copySidecar(source, name, expectedSha256) {
   const absoluteSource = resolve(source);

@@ -8,9 +8,13 @@
     "dev:tauri": "vite dev --host 127.0.0.1 --port 5173 --strictPort",
     "build": "vite build",
     "build:web": "vite build",
+    "build:tauri": "pnpm build:windows-icon && pnpm tauri build",
     "preview": "vite preview --host 0.0.0.0",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:all": "pnpm check && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
+    "build:windows-icon": "node scripts/build-windows-icon.mjs",
     "prepare-ffmpeg-sidecar": "node scripts/prepare-ffmpeg-sidecar.mjs",
+    "prepare-ffmpeg-sidecar:release": "node scripts/prepare-ffmpeg-sidecar.mjs --require-checksums",
     "tauri": "tauri"
   },
   "dependencies": {

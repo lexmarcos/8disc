@@ -49,10 +49,45 @@ Run project checks:
 pnpm check
 ```
 
+Run all frontend and Tauri checks:
+
+```bash
+pnpm check:all
+```
+
 Build for production:
 
 ```bash
 pnpm build
+```
+
+## Web Deploy on Caddy
+
+The web build uses FFmpeg WASM multithreading when the page is cross-origin isolated. On a VPS with Caddy, serve the static `build` folder with COOP and COEP headers:
+
+```caddyfile
+example.com {
+  root * /var/www/8disc
+  encode zstd gzip
+
+  header {
+    Cross-Origin-Opener-Policy "same-origin"
+    Cross-Origin-Embedder-Policy "require-corp"
+  }
+
+  @immutable path /_app/immutable/*
+  header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+  try_files {path} /index.html
+  file_server
+}
+```
+
+After deploying, verify this in the browser console:
+
+```js
+globalThis.crossOriginIsolated === true
+typeof SharedArrayBuffer !== 'undefined'
 ```
 
 ## Desktop App
@@ -77,6 +112,16 @@ FFPROBE_SHA256=<sha256> \
 pnpm prepare-ffmpeg-sidecar
 ```
 
+Release builds should require checksums:
+
+```bash
+FFMPEG_BINARY=/path/to/ffmpeg.exe \
+FFPROBE_BINARY=/path/to/ffprobe.exe \
+FFMPEG_SHA256=<sha256> \
+FFPROBE_SHA256=<sha256> \
+pnpm prepare-ffmpeg-sidecar:release
+```
+
 Run the desktop app in development:
 
 ```bash
@@ -86,7 +131,7 @@ pnpm tauri dev
 Build the desktop app:
 
 ```bash
-pnpm tauri build
+pnpm build:tauri
 ```
 
 ## Privacy
