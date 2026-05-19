@@ -60,6 +60,9 @@
       desktopHeaderMeta: 'local / gpu / mp4',
       languageLabel: 'Language',
       downloadApp: 'Download app',
+      downloadMenuLabel: 'App downloads',
+      downloadWindows: 'Windows',
+      downloadLinux: 'Linux',
       eyebrow: 'local compressor',
       headline: 'Compress to fit on Discord',
       uploadAria: 'Video upload',
@@ -111,6 +114,9 @@
       desktopHeaderMeta: 'local / gpu / mp4',
       languageLabel: 'Idioma',
       downloadApp: 'Baixar app',
+      downloadMenuLabel: 'Downloads do app',
+      downloadWindows: 'Windows',
+      downloadLinux: 'Linux',
       eyebrow: 'compressor local',
       headline: 'Comprima para caber no Discord',
       uploadAria: 'Upload de video',
@@ -171,7 +177,16 @@
   const SIZE_RETRY_TIGHTENING = 0.96;
   const SIZE_RETRY_EXPANSION = 0.98;
   const MIN_VIDEO_KBPS = 80;
-  const desktopDownloadUrl = 'https://github.com/lexmarcos/8disc/releases/latest';
+  const desktopDownloadOptions = [
+    {
+      platform: 'windows',
+      href: 'https://github.com/lexmarcos/8disc/releases/download/v0.10.0/8disc-0.1.0-windows-x64.zip'
+    },
+    {
+      platform: 'linux',
+      href: 'https://github.com/lexmarcos/8disc/releases/download/v0.20.0/8disc-0.20.0-linux-x64.zip'
+    }
+  ] as const;
   const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
   const resizeHandles: ResizeHandle[] = [
     { direction: 'North', className: 'absolute inset-x-3 top-0 z-40 h-1 cursor-n-resize' },
@@ -213,6 +228,8 @@
   let desktopOutputPath = '';
   let activeEncoder = '';
   let errorDetail = '';
+  let downloadMenuOpen = false;
+  let downloadMenuElement: HTMLDivElement;
 
   $: text = translations[locale];
   $: selectedVideoName = desktopVideo?.name ?? videoFile?.name ?? '';
@@ -251,6 +268,28 @@
   function setLocale(nextLocale: Locale) {
     applyLocale(nextLocale);
     localStorage.setItem('8disc:locale', nextLocale);
+  }
+
+  function toggleDownloadMenu(event: MouseEvent) {
+    event.stopPropagation();
+    downloadMenuOpen = !downloadMenuOpen;
+  }
+
+  function closeDownloadMenu() {
+    downloadMenuOpen = false;
+  }
+
+  function handleWindowClick(event: MouseEvent) {
+    const target = event.target;
+
+    if (!downloadMenuOpen || !(target instanceof Node)) return;
+    if (!downloadMenuElement?.contains(target)) closeDownloadMenu();
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      closeDownloadMenu();
+    }
   }
 
   function applyLocale(nextLocale: Locale) {
@@ -857,6 +896,8 @@
   <meta name="description" content={text.metaDescription} />
 </svelte:head>
 
+<svelte:window onclick={handleWindowClick} onkeydown={handleWindowKeydown} />
+
 <main
   class={[
     'relative min-h-screen overflow-hidden bg-[#1713c8] px-4 pb-4 text-[#fbfbff] sm:px-6',
@@ -934,14 +975,58 @@
       <span class="hidden sm:inline">{isDesktop ? text.desktopHeaderMeta : text.headerMeta}</span>
       <div class="flex items-center gap-2">
         {#if !isDesktop}
-          <a
-            class="grid min-h-8 place-items-center border border-[#fbfbff]/35 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
-            href={desktopDownloadUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {text.downloadApp}
-          </a>
+          <div class="relative" bind:this={downloadMenuElement}>
+            <button
+              type="button"
+              class="flex min-h-8 items-center gap-2 border border-[#fbfbff]/35 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+              aria-haspopup="menu"
+              aria-expanded={downloadMenuOpen}
+              aria-label={text.downloadMenuLabel}
+              onclick={toggleDownloadMenu}
+            >
+              {text.downloadApp}
+              <svg
+                class={[
+                  'size-3 transition-transform',
+                  downloadMenuOpen ? 'rotate-180' : 'rotate-0'
+                ]}
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="square" />
+              </svg>
+            </button>
+
+            {#if downloadMenuOpen}
+              <div
+                class="absolute left-0 right-0 top-full z-50 mt-2 border border-[#fbfbff] bg-[#fbfbff]"
+                role="menu"
+                aria-label={text.downloadMenuLabel}
+              >
+                {#each desktopDownloadOptions as option}
+                  <a
+                    class="flex min-h-10 items-center gap-3 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#1713c8] transition hover:bg-[#1713c8]/10 focus:bg-[#1713c8]/10 focus:outline-none"
+                    href={option.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    role="menuitem"
+                    onclick={closeDownloadMenu}
+                  >
+                    {#if option.platform === 'windows'}
+                      <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M3 4.6 10.7 3.5v8H3V4.6Zm9-1.3L21 2v9.5h-9V3.3ZM3 12.8h7.7v7.7L3 19.4v-6.6Zm9 0h9V22l-9-1.3v-7.9Z" />
+                      </svg>
+                      <span>{text.downloadWindows}</span>
+                    {:else}
+                      <img class="size-4 shrink-0 object-contain" src="/linux-logo.svg" alt="" />
+                      <span>{text.downloadLinux}</span>
+                    {/if}
+                  </a>
+                {/each}
+              </div>
+            {/if}
+          </div>
         {/if}
 
         <div class="flex items-center border border-[#fbfbff]/35" role="group" aria-label={text.languageLabel}>
