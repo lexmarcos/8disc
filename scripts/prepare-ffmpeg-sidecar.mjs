@@ -53,5 +53,41 @@ function copySidecar(source, name, expectedSha256) {
 }
 
 function detectTargetTriple() {
-  return execFileSync('rustc', ['--print', 'host-tuple'], { encoding: 'utf8' }).trim();
+  const hostTriple = getKnownHostTriple();
+
+  if (hostTriple) {
+    return hostTriple;
+  }
+
+  try {
+    return execFileSync('rustc', ['--print', 'host-tuple'], { encoding: 'utf8' }).trim();
+  } catch {
+    const versionInfo = execFileSync('rustc', ['-vV'], { encoding: 'utf8' });
+    const host = versionInfo.match(/^host: (.+)$/m)?.[1];
+
+    if (!host) {
+      throw new Error('Could not detect the Rust host target triple from rustc.');
+    }
+
+    return host;
+  }
+}
+
+function getKnownHostTriple() {
+  if (process.platform === 'linux') {
+    if (process.arch === 'x64') return 'x86_64-unknown-linux-gnu';
+    if (process.arch === 'arm64') return 'aarch64-unknown-linux-gnu';
+  }
+
+  if (process.platform === 'win32') {
+    if (process.arch === 'x64') return 'x86_64-pc-windows-msvc';
+    if (process.arch === 'arm64') return 'aarch64-pc-windows-msvc';
+  }
+
+  if (process.platform === 'darwin') {
+    if (process.arch === 'x64') return 'x86_64-apple-darwin';
+    if (process.arch === 'arm64') return 'aarch64-apple-darwin';
+  }
+
+  return undefined;
 }

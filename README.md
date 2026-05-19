@@ -100,6 +100,12 @@ Prepare the FFmpeg sidecars before building the desktop app:
 FFMPEG_BINARY=/path/to/ffmpeg.exe FFPROBE_BINARY=/path/to/ffprobe.exe pnpm prepare-ffmpeg-sidecar
 ```
 
+For Linux builds, point the sidecar preparation to Linux executables:
+
+```bash
+FFMPEG_BINARY=/usr/bin/ffmpeg FFPROBE_BINARY=/usr/bin/ffprobe pnpm prepare-ffmpeg-sidecar
+```
+
 When preparing Windows sidecars from another OS, set `TAURI_TARGET_TRIPLE` explicitly, for example `x86_64-pc-windows-msvc`.
 
 Optional checksum validation:
@@ -132,6 +138,12 @@ Build the desktop app:
 
 ```bash
 pnpm build:tauri
+```
+
+Build Linux packages:
+
+```bash
+pnpm build:linux
 ```
 
 ## Privacy

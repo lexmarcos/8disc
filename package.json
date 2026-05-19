@@ -12,6 +12,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:all": "pnpm check && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
+    "build:linux": "pnpm build:linux-icons && pnpm tauri build --bundles appimage,deb",
+    "build:linux-icons": "node scripts/build-linux-icons.mjs",
     "build:windows-icon": "node scripts/build-windows-icon.mjs",
     "prepare-ffmpeg-sidecar": "node scripts/prepare-ffmpeg-sidecar.mjs",
     "prepare-ffmpeg-sidecar:release": "node scripts/prepare-ffmpeg-sidecar.mjs --require-checksums",
