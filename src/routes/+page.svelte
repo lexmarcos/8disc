@@ -50,6 +50,7 @@
     direction: ResizeDirection;
     className: string;
   };
+  type FFmpegConstructor = new () => FFmpegInstance;
 
   const translations = {
     en: {
@@ -181,6 +182,7 @@
   const SIZE_RETRY_TIGHTENING = 0.96;
   const SIZE_RETRY_EXPANSION = 0.98;
   const MIN_VIDEO_KBPS = 80;
+  const FFMPEG_LOAD_TIMEOUT_MS = 20_000;
   const desktopDownloadOptions = [
     {
       platform: 'windows',
@@ -246,13 +248,8 @@
     hasSelectedVideo && !isVideoAtOrBelowTarget && !errorKey && !isLoadingEngine && !isCompressing;
   $: inputSize = selectedVideoSize ? formatBytes(selectedVideoSize) : '';
   $: outputSize = compressedSize ? formatBytes(compressedSize) : '';
-  $: engineLabel = isLoadingEngine
-    ? text.status.preparingFfmpeg
-    : isCompressing
-      ? progress > 0
-        ? text.progress(progress)
-        : text.status[statusKey]
-      : text.status[statusKey];
+  $: engineLabel =
+    isCompressing && progress > 0 ? text.progress(progress) : text.status[statusKey];
   $: engineDetail = activeEncoder ? `${engineLabel} / ${activeEncoder}` : engineLabel;
   $: errorText = errorKey ? text.errors[errorKey] : '';
 
@@ -477,6 +474,7 @@
     isLoadingEngine = true;
     isCompressing = false;
     progress = 0;
+    statusKey = 'preparingFfmpeg';
 
     try {
       const encoder = await loadEncoder();
@@ -618,28 +616,65 @@
       return ffmpeg;
     }
 
-    statusKey = 'loadingFfmpeg';
-
     const [{ FFmpeg }, util] = await Promise.all([
       import('@ffmpeg/ffmpeg'),
       import('@ffmpeg/util')
     ]);
-    const coreConfig = supportsMultithreadEncoder()
-      ? await loadMultithreadCore()
-      : await loadSingleThreadCore();
+    const coreConfigs = supportsMultithreadEncoder()
+      ? [
+          { label: 'wasm mt', config: await loadMultithreadCore() },
+          { label: 'wasm', config: await loadSingleThreadCore() }
+        ]
+      : [{ label: 'wasm', config: await loadSingleThreadCore() }];
 
+    let lastError: unknown;
+
+    for (const { label, config } of coreConfigs) {
+      const instance = createFfmpegInstance(FFmpeg);
+      activeEncoder = label;
+      statusKey = 'loadingFfmpeg';
+
+      try {
+        await loadFfmpegInstance(instance, config);
+        ffmpeg = instance;
+        fetchFile = util.fetchFile as FetchFile;
+        return instance;
+      } catch (error) {
+        lastError = error;
+        instance.terminate();
+      }
+    }
+
+    throw lastError ?? new Error('ffmpeg-load-failed');
+  }
+
+  function createFfmpegInstance(FFmpeg: FFmpegConstructor) {
     const instance = new FFmpeg();
+
     instance.on('progress', ({ progress: ratio }) => {
       if (isCompressing) {
         progress = Math.max(1, Math.min(99, Math.round(ratio * 100)));
       }
     });
 
-    await instance.load(coreConfig);
-
-    ffmpeg = instance;
-    fetchFile = util.fetchFile as FetchFile;
     return instance;
+  }
+
+  async function loadFfmpegInstance(instance: FFmpegInstance, coreConfig: FfmpegLoadConfig) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), FFMPEG_LOAD_TIMEOUT_MS);
+
+    try {
+      await instance.load(coreConfig, { signal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error('ffmpeg-load-timeout');
+      }
+
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   }
 
   function supportsMultithreadEncoder() {
