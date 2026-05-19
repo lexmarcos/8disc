@@ -51,6 +51,7 @@
     className: string;
   };
   type FFmpegConstructor = new () => FFmpegInstance;
+  type AudioContextConstructor = new () => AudioContext;
 
   const translations = {
     en: {
@@ -236,6 +237,7 @@
   let errorDetail = '';
   let downloadMenuOpen = false;
   let downloadMenuElement: HTMLDivElement;
+  let notificationAudioContext: AudioContext | null = null;
 
   $: text = translations[locale];
   $: selectedVideoName = desktopVideo?.name ?? videoFile?.name ?? '';
@@ -267,6 +269,10 @@
 
   onDestroy(() => {
     clearCompressedOutput();
+
+    if (notificationAudioContext) {
+      void notificationAudioContext.close();
+    }
   });
 
   function setLocale(nextLocale: Locale) {
@@ -456,11 +462,13 @@
 
   async function compressVideo() {
     if (isDesktop && desktopVideo) {
+      await prepareNotificationSound();
       await compressDesktopVideo(desktopVideo);
       return;
     }
 
     if (!videoFile) return;
+    await prepareNotificationSound();
 
     const jobTarget = selectedTarget;
     const jobTargetBytes = jobTarget * MB;
@@ -518,6 +526,7 @@
       compressedName = `${withoutExtension(videoFile.name)}-${jobTarget}mb.mp4`;
       progress = 100;
       statusKey = resultBlob.size <= jobTargetBytes ? 'fileReady' : 'fileReadyOversized';
+      playCompletionSound();
     } catch (error) {
       if (!errorKey) {
         errorKey = 'compressFailed';
@@ -601,6 +610,7 @@
       progress = 100;
       activeEncoder = result.encoder;
       statusKey = result.outputSize <= jobTargetBytes ? 'fileReady' : 'fileReadyOversized';
+      playCompletionSound();
     } catch (error) {
       setCompressionError(error);
       statusKey = 'compressionFailed';
@@ -855,6 +865,71 @@
       };
       video.src = objectUrl;
     });
+  }
+
+  async function prepareNotificationSound() {
+    if (!browser) return;
+
+    const audioWindow = window as Window & {
+      AudioContext?: AudioContextConstructor;
+      webkitAudioContext?: AudioContextConstructor;
+    };
+    const AudioContextClass = audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const context = notificationAudioContext ?? new AudioContextClass();
+    notificationAudioContext = context;
+
+    if (context.state === 'suspended') {
+      await context.resume();
+    }
+  }
+
+  function playCompletionSound() {
+    if (!browser) return;
+
+    void prepareNotificationSound().then(() => {
+      const context = notificationAudioContext;
+      if (!context || context.state === 'closed') return;
+
+      const start = context.currentTime + 0.02;
+      const master = context.createGain();
+      master.gain.setValueAtTime(0.0001, start);
+      master.gain.exponentialRampToValueAtTime(0.08, start + 0.05);
+      master.gain.exponentialRampToValueAtTime(0.0001, start + 1.45);
+      master.connect(context.destination);
+
+      playTone(context, master, 523.25, start, 0.95, 0.42);
+      playTone(context, master, 659.25, start + 0.08, 1.05, 0.32);
+      playTone(context, master, 783.99, start + 0.18, 1.15, 0.26);
+
+      window.setTimeout(() => master.disconnect(), 1600);
+    });
+  }
+
+  function playTone(
+    context: AudioContext,
+    output: AudioNode,
+    frequency: number,
+    start: number,
+    duration: number,
+    volume: number
+  ) {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const end = start + duration;
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, start);
+
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+
+    oscillator.connect(gain);
+    gain.connect(output);
+    oscillator.start(start);
+    oscillator.stop(end + 0.03);
   }
 
   async function safeDelete(encoder: FFmpegInstance, path: string) {
