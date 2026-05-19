@@ -1,6 +1,6 @@
 [package]
 name = "eightdisc"
-version = "0.1.0"
+version = "0.20.0"
 description = "Local video compressor for Discord upload limits"
 authors = ["Markzuel"]
 edition = "2021"
