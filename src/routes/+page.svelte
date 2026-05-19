@@ -73,6 +73,8 @@
       compress: 'Compress',
       compressing: 'Compressing',
       download: 'Download',
+      alreadyBelowTarget: (target: number) =>
+        `This video is already smaller than ${target} MB, so it cannot be compressed for this target. Choose a smaller target.`,
       createdBy: 'Created by Markzuel',
       social: {
         github: 'Markzuel on GitHub',
@@ -127,6 +129,8 @@
       compress: 'Comprimir',
       compressing: 'Comprimindo',
       download: 'Baixar',
+      alreadyBelowTarget: (target: number) =>
+        `Este video ja esta menor que ${target} MB, entao nao e possivel comprimir para esse alvo. Escolha um alvo menor.`,
       createdBy: 'Criado por Markzuel',
       social: {
         github: 'Markzuel no GitHub',
@@ -235,8 +239,11 @@
   $: selectedVideoName = desktopVideo?.name ?? videoFile?.name ?? '';
   $: selectedVideoSize = desktopVideo?.size ?? videoFile?.size ?? 0;
   $: hasSelectedVideo = Boolean(desktopVideo || videoFile);
-  $: canCompress = hasSelectedVideo && !errorKey && !isLoadingEngine && !isCompressing;
   $: targetBytes = selectedTarget * MB;
+  $: isVideoAtOrBelowTarget =
+    hasSelectedVideo && selectedVideoSize > 0 && selectedVideoSize <= targetBytes;
+  $: canCompress =
+    hasSelectedVideo && !isVideoAtOrBelowTarget && !errorKey && !isLoadingEngine && !isCompressing;
   $: inputSize = selectedVideoSize ? formatBytes(selectedVideoSize) : '';
   $: outputSize = compressedSize ? formatBytes(compressedSize) : '';
   $: engineLabel = isLoadingEngine
@@ -1127,6 +1134,15 @@
           </button>
         {/each}
       </div>
+
+      {#if isVideoAtOrBelowTarget}
+        <div
+          class="w-full max-w-2xl border border-[#fbfbff]/45 bg-[#fbfbff] px-4 py-3 text-sm font-bold text-[#1713c8]"
+          aria-live="polite"
+        >
+          {text.alreadyBelowTarget(selectedTarget)}
+        </div>
+      {/if}
 
       <div class="flex w-full max-w-2xl flex-col gap-3 sm:flex-row">
         <button
