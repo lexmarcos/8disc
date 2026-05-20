@@ -1,0 +1,24 @@
+[Unit]
+Description=8disc web app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=__APP_DIR__/current
+Environment=NODE_ENV=production
+Environment=HOST=0.0.0.0
+Environment=PORT=__APP_PORT__
+Environment=STATIC_DIR=__APP_DIR__/current/build
+ExecStart=/usr/bin/node __APP_DIR__/current/server/serve-static.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__APP_DIR__
+
+[Install]
+WantedBy=multi-user.target

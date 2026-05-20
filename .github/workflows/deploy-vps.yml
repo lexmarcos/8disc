@@ -1,0 +1,140 @@
+name: Deploy web to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: 8disc-production
+  cancel-in-progress: true
+
+env:
+  APP_PORT: '2000'
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10'
+  SERVICE_NAME: 8disc
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      APP_DIR: ${{ secrets.VPS_APP_DIR || '/opt/8disc' }}
+      SSH_PORT: ${{ secrets.VPS_PORT || '22' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+          : "${VPS_HOST:?Set the VPS_HOST secret}"
+          : "${VPS_USER:?Set the VPS_USER secret}"
+          : "${VPS_SSH_KEY:?Set the VPS_SSH_KEY secret}"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check project
+        run: pnpm check
+
+      - name: Build static site
+        env:
+          PUBLIC_SITE_URL_SECRET: ${{ secrets.PUBLIC_SITE_URL }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          set -Eeuo pipefail
+          site_url="${PUBLIC_SITE_URL_SECRET:-http://${VPS_HOST}:${APP_PORT}}"
+          PUBLIC_SITE_URL="$site_url" pnpm build
+
+      - name: Create deployment package
+        env:
+          RELEASE_ID: ${{ github.sha }}-${{ github.run_number }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p release/server
+          cp -a build release/build
+          cp scripts/serve-static.mjs release/server/serve-static.mjs
+          tar -C release -czf 8disc-release.tar.gz .
+          sed \
+            -e "s#__APP_DIR__#${APP_DIR}#g" \
+            -e "s#__APP_PORT__#${APP_PORT}#g" \
+            deploy/8disc.service > 8disc.service
+          printf '%s\n' "$RELEASE_ID" > release-id.txt
+
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+          : "${VPS_HOST:?Set the VPS_HOST secret}"
+          : "${VPS_USER:?Set the VPS_USER secret}"
+          : "${VPS_SSH_KEY:?Set the VPS_SSH_KEY secret}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/8disc_deploy_key
+          chmod 600 ~/.ssh/8disc_deploy_key
+          ssh-keyscan -p "$SSH_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload package
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+          scp -i ~/.ssh/8disc_deploy_key -P "$SSH_PORT" \
+            8disc-release.tar.gz 8disc.service \
+            "$VPS_USER@$VPS_HOST:/tmp/"
+
+      - name: Install and restart service
+        env:
+          RELEASE_ID: ${{ github.sha }}-${{ github.run_number }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -i ~/.ssh/8disc_deploy_key -p "$SSH_PORT" "$VPS_USER@$VPS_HOST" \
+            "APP_DIR='$APP_DIR' APP_PORT='$APP_PORT' RELEASE_ID='$RELEASE_ID' SERVICE_NAME='$SERVICE_NAME' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+
+          if ! command -v node >/dev/null 2>&1; then
+            echo "Node.js is required on the VPS. Install Node 22+ before deploying." >&2
+            exit 1
+          fi
+
+          release_dir="$APP_DIR/releases/$RELEASE_ID"
+          sudo mkdir -p "$APP_DIR/releases"
+          sudo rm -rf "$release_dir"
+          sudo mkdir -p "$release_dir"
+          sudo tar -xzf /tmp/8disc-release.tar.gz -C "$release_dir"
+          sudo chown -R root:root "$release_dir"
+          sudo chmod -R a+rX "$release_dir"
+          sudo ln -sfn "$release_dir" "$APP_DIR/current"
+          sudo install -m 0644 /tmp/8disc.service "/etc/systemd/system/$SERVICE_NAME.service"
+          sudo systemctl daemon-reload
+          sudo systemctl enable "$SERVICE_NAME"
+          sudo systemctl restart "$SERVICE_NAME"
+          node --input-type=module -e "const response = await fetch('http://127.0.0.1:${APP_PORT}/robots.txt'); if (!response.ok) process.exit(1);"
+          sudo systemctl --no-pager --full status "$SERVICE_NAME"
+          sudo find "$APP_DIR/releases" -mindepth 1 -maxdepth 1 -type d | sort | head -n -5 | xargs -r sudo rm -rf
+          REMOTE

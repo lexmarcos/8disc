@@ -58,16 +58,58 @@ pnpm check:all
 Build for production:
 
 ```bash
-pnpm build
+PUBLIC_SITE_URL=https://your-domain.example pnpm build
 ```
 
-## Web Deploy on Caddy
+Run the production static server locally on port 2000:
 
-The web build uses FFmpeg WASM multithreading when the page is cross-origin isolated. On a VPS with Caddy, serve the static `build` folder with COOP and COEP headers:
+```bash
+pnpm build
+pnpm serve:prod
+```
+
+## GitHub Actions VPS Deploy
+
+The workflow in `.github/workflows/deploy-vps.yml` builds the static site, uploads it to a VPS, installs a systemd service, and serves 8disc on port `2000`.
+
+Prepare the VPS:
+
+```bash
+sudo apt update
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo ufw allow 2000/tcp
+```
+
+Use `root` as the deploy user or a deploy user with passwordless `sudo` for `mkdir`, `tar`, `install`, and `systemctl`. The service runs as `www-data`, which is available on Debian/Ubuntu servers.
+
+Add these GitHub repository secrets:
+
+- `VPS_HOST`: server IP or hostname
+- `VPS_USER`: SSH user
+- `VPS_SSH_KEY`: private SSH key allowed to connect to the VPS
+- `PUBLIC_SITE_URL`: final public origin, for example `https://8disc.example.com`
+
+Optional secrets:
+
+- `VPS_PORT`: SSH port, defaults to `22`
+- `VPS_APP_DIR`: app directory, defaults to `/opt/8disc`
+
+The deployment creates `/opt/8disc/current`, keeps recent releases in `/opt/8disc/releases`, and restarts the `8disc` systemd service. Verify it after a deploy:
+
+```bash
+curl -I http://127.0.0.1:2000/
+sudo systemctl status 8disc --no-pager
+```
+
+## Optional Caddy Reverse Proxy
+
+Set `PUBLIC_SITE_URL` to the final production origin before building so canonical URLs, Open Graph URLs, `robots.txt`, and `sitemap.xml` point to the correct domain.
+
+The production server already sends the COOP and COEP headers required by FFmpeg WASM multithreading. If you want a domain with HTTPS in front of port 2000, use Caddy as a reverse proxy:
 
 ```caddyfile
 example.com {
-  root * /var/www/8disc
   encode zstd gzip
 
   header {
@@ -75,11 +117,7 @@ example.com {
     Cross-Origin-Embedder-Policy "require-corp"
   }
 
-  @immutable path /_app/immutable/*
-  header @immutable Cache-Control "public, max-age=31536000, immutable"
-
-  try_files {path} /index.html
-  file_server
+  reverse_proxy 127.0.0.1:2000
 }
 ```
 

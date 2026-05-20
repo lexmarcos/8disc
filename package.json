@@ -10,6 +10,7 @@
     "build:web": "vite build",
     "build:tauri": "pnpm build:windows-icon && pnpm tauri build",
     "preview": "vite preview --host 0.0.0.0",
+    "serve:prod": "PORT=2000 STATIC_DIR=build node scripts/serve-static.mjs",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:all": "pnpm check && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
     "build:linux": "pnpm build:linux-icons && pnpm tauri build --bundles appimage,deb",
