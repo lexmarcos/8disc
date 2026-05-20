@@ -13,7 +13,7 @@ concurrency:
 env:
   APP_PORT: '2000'
   NODE_VERSION: '22'
-  PNPM_VERSION: '10'
+  PNPM_VERSION: '10.22.0'
   SERVICE_NAME: 8disc
 
 jobs:
@@ -69,6 +69,7 @@ jobs:
           image_tag="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}"
           docker build \
             --build-arg PUBLIC_SITE_URL="$PUBLIC_SITE_URL" \
+            --build-arg PNPM_VERSION="$PNPM_VERSION" \
             --label "com.8disc.service=${SERVICE_NAME}" \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \

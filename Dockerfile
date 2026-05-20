@@ -2,7 +2,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-RUN corepack enable
+ARG PNPM_VERSION=10.22.0
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile

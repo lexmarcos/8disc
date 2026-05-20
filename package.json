@@ -3,6 +3,7 @@
   "version": "0.20.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.22.0",
   "scripts": {
     "dev": "vite dev --host 127.0.0.1",
     "dev:tauri": "vite dev --host 127.0.0.1 --port 5173 --strictPort",
@@ -19,6 +20,11 @@
     "prepare-ffmpeg-sidecar": "node scripts/prepare-ffmpeg-sidecar.mjs",
     "prepare-ffmpeg-sidecar:release": "node scripts/prepare-ffmpeg-sidecar.mjs --require-checksums",
     "tauri": "tauri"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
