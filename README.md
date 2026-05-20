@@ -72,16 +72,23 @@ pnpm serve:prod
 
 The workflow in `.github/workflows/deploy-vps.yml` builds a Docker image, sends it to a VPS, and runs it with Docker Compose on port `2000`.
 
-Prepare the VPS with Docker:
+Prepare the VPS with Docker as an administrator:
 
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker <deploy-user>
 sudo systemctl enable --now docker
-sudo docker compose version
 sudo ufw allow 2000/tcp
 ```
 
-Use `root`, a user with Docker daemon access, or a user with passwordless `sudo` for deployment commands (`docker`, `mkdir`, `cp`). The workflow detects whether Docker should run directly or through `sudo`.
+After logging in again as `<deploy-user>`, verify direct Docker access:
+
+```bash
+docker compose version
+docker info
+```
+
+The workflow does not use `sudo`. The deploy user must have direct Docker daemon access and write access to `VPS_APP_DIR`.
 
 Add these GitHub environment secrets (`production`):
 
@@ -93,7 +100,7 @@ Add these GitHub environment secrets (`production`):
 Optional:
 
 - `VPS_PORT`: SSH port, defaults to `22`
-- `VPS_APP_DIR`: deployment directory, defaults to `/opt/8disc`
+- `VPS_APP_DIR`: deployment directory, defaults to `$HOME/8disc` on the VPS
 
 The workflow creates/updates:
 
