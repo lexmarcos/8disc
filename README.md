@@ -81,7 +81,7 @@ sudo docker compose version
 sudo ufw allow 2000/tcp
 ```
 
-Use `root` or a user with passwordless `sudo` for deployment commands (`docker`, `mkdir`, `cp`). The workflow runs Docker through `sudo` on the VPS.
+Use `root`, a user with Docker daemon access, or a user with passwordless `sudo` for deployment commands (`docker`, `mkdir`, `cp`). The workflow detects whether Docker should run directly or through `sudo`.
 
 Add these GitHub environment secrets (`production`):
 
@@ -104,7 +104,7 @@ The workflow creates/updates:
 Verify a deployment:
 
 ```bash
-sudo docker ps --filter name=8disc
+docker ps --filter name=8disc
 curl -I http://127.0.0.1:2000/robots.txt
 ```
 

@@ -119,8 +119,21 @@ jobs:
             exit 1
           fi
 
-          if ! sudo docker compose version >/dev/null 2>&1; then
-            echo "Docker Compose plugin is required on the VPS." >&2
+          USE_SUDO_DOCKER=0
+          docker_cli() {
+            if [ "$USE_SUDO_DOCKER" = "1" ]; then
+              sudo docker "$@"
+            else
+              docker "$@"
+            fi
+          }
+
+          if docker compose version >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+            USE_SUDO_DOCKER=0
+          elif command -v sudo >/dev/null 2>&1 && sudo -n docker compose version >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then
+            USE_SUDO_DOCKER=1
+          else
+            echo "Docker Compose plugin and Docker daemon access are required on the VPS." >&2
             exit 1
           fi
 
@@ -129,8 +142,8 @@ jobs:
           sudo cp /tmp/docker-compose.yml "$APP_DIR/docker-compose.yml"
           printf 'APP_IMAGE=%s\nAPP_PORT=%s\nCONTAINER_NAME=%s\n' "$APP_IMAGE" "$APP_PORT" "$SERVICE_NAME" | \
             sudo tee "$APP_DIR/.env" >/dev/null
-          sudo docker image load -i "$APP_DIR/8disc-image.tar"
-          sudo docker compose -f "$APP_DIR/docker-compose.yml" --env-file "$APP_DIR/.env" up -d --remove-orphans
+          docker_cli image load -i "$APP_DIR/8disc-image.tar"
+          docker_cli compose -f "$APP_DIR/docker-compose.yml" --env-file "$APP_DIR/.env" up -d --remove-orphans
 
           for attempt in $(seq 1 20); do
             if curl -fsS "http://127.0.0.1:${APP_PORT}/robots.txt"; then
@@ -138,17 +151,17 @@ jobs:
             fi
             if [ "$attempt" -eq 20 ]; then
               echo "Health check failed after 20 attempts" >&2
-              sudo docker compose -f "$APP_DIR/docker-compose.yml" --env-file "$APP_DIR/.env" ps
+              docker_cli compose -f "$APP_DIR/docker-compose.yml" --env-file "$APP_DIR/.env" ps
               exit 1
             fi
             sleep 3
           done
 
-          current_image_id="$(sudo docker image inspect -f '{{.Id}}' "$APP_IMAGE")"
-          sudo docker images --filter "label=com.8disc.service=$SERVICE_NAME" --format '{{.Repository}}:{{.Tag}} {{.ID}}' | \
+          current_image_id="$(docker_cli image inspect -f '{{.Id}}' "$APP_IMAGE")"
+          docker_cli images --filter "label=com.8disc.service=$SERVICE_NAME" --format '{{.Repository}}:{{.Tag}} {{.ID}}' | \
             while read -r image_name image_id; do
               if [ "$image_name" != "$APP_IMAGE" ] && [ "$image_id" != "$current_image_id" ]; then
-                sudo docker image rm "$image_name" >/dev/null 2>&1 || true
+                docker_cli image rm "$image_name" >/dev/null 2>&1 || true
               fi
             done
           REMOTE
