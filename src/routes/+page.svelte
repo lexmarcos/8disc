@@ -1,5 +1,6 @@
 <script lang="ts">
   import { browser } from '$app/environment';
+  import { absoluteUrl, localizedPages, ogImagePath, siteName, xDefaultPath } from '$lib/seo';
   import { onDestroy, onMount } from 'svelte';
   import type { FFmpeg as FFmpegInstance } from '@ffmpeg/ffmpeg';
 
@@ -56,8 +57,18 @@
   const translations = {
     en: {
       htmlLang: 'en',
-      metaTitle: '8disc - Local video compressor',
-      metaDescription: 'Compress videos locally to 8 MB, 16 MB, 25 MB, 50 MB, or 100 MB.',
+      metaTitle: '8disc - Compress Video to 8MB for Discord',
+      metaDescription:
+        'Compress MP4, MOV, MKV, WebM and other videos locally to 8 MB, 16 MB, 25 MB, 50 MB or 100 MB for Discord. Private, fast and no uploads.',
+      ogTitle: '8disc - Local Discord video compressor',
+      ogDescription:
+        'Shrink videos in your browser or desktop app to Discord-friendly sizes without uploading files.',
+      structuredFeatures: [
+        'Local browser video compression',
+        'Desktop compression with native FFmpeg',
+        'Discord-friendly target sizes',
+        'Private processing with no server upload'
+      ],
       headerMeta: 'local / wasm / mp4',
       desktopHeaderMeta: 'local / gpu / mp4',
       languageLabel: 'Language',
@@ -111,9 +122,18 @@
     },
     pt: {
       htmlLang: 'pt-BR',
-      metaTitle: '8disc - Compressor local de video',
+      metaTitle: '8disc - Comprimir vídeo para 8 MB no Discord',
       metaDescription:
-        'Comprima videos localmente para 8 MB, 16 MB, 25 MB, 50 MB ou 100 MB.',
+        'Comprima MP4, MOV, MKV, WebM e outros vídeos localmente para 8 MB, 16 MB, 25 MB, 50 MB ou 100 MB no Discord. Privado, rápido e sem upload.',
+      ogTitle: '8disc - Compressor local de vídeo para Discord',
+      ogDescription:
+        'Reduza vídeos no navegador ou app desktop para tamanhos compatíveis com o Discord sem enviar arquivos para servidores.',
+      structuredFeatures: [
+        'Compressão local de vídeo no navegador',
+        'Compressão desktop com FFmpeg nativo',
+        'Tamanhos finais compatíveis com o Discord',
+        'Processamento privado sem upload para servidor'
+      ],
       headerMeta: 'local / wasm / mp4',
       desktopHeaderMeta: 'local / gpu / mp4',
       languageLabel: 'Idioma',
@@ -170,12 +190,26 @@
   type Locale = keyof typeof translations;
   type StatusKey = keyof (typeof translations)['en']['status'];
   type ErrorKey = keyof (typeof translations)['en']['errors'];
+  type Translation = (typeof translations)[Locale];
+
+  export let initialLocale: Locale = 'en';
+  export let canonicalPath = '/';
 
   const targetSizes = [8, 16, 25, 50, 100] as const;
   const languageOptions = [
-    { code: 'en', label: 'EN' },
-    { code: 'pt', label: 'PT' }
+    { code: 'en', label: 'EN', href: '/', hreflang: 'en' },
+    { code: 'pt', label: 'PT', href: '/pt/', hreflang: 'pt-BR' }
   ] as const;
+  const alternateLinks = [
+    ...localizedPages.map(({ hreflang, path }) => ({ hreflang, href: absoluteUrl(path) })),
+    { hreflang: 'x-default', href: absoluteUrl(xDefaultPath) }
+  ];
+  const sameAsLinks = [
+    'https://github.com/lexmarcos',
+    'https://www.instagram.com/markzuel/',
+    'https://x.com/mark_zuel',
+    'https://www.linkedin.com/in/marcosuelfilho/'
+  ];
   const MB = 1024 * 1024;
   const MAX_INPUT_BYTES = 2 * 1024 * MB;
   const TARGET_BITRATE_UTILIZATION = 0.97;
@@ -213,7 +247,7 @@
     { longEdge: 854, minVideoKbps: 700 }
   ] as const;
 
-  let locale: Locale = 'en';
+  let locale: Locale = initialLocale;
   let selectedTarget: TargetSize = 8;
   let isDesktop = isTauriRuntime();
   let videoFile: File | null = null;
@@ -240,6 +274,9 @@
   let notificationAudioContext: AudioContext | null = null;
 
   $: text = translations[locale];
+  $: pageUrl = absoluteUrl(canonicalPath);
+  $: ogImageUrl = absoluteUrl(ogImagePath);
+  $: structuredData = createStructuredData(text, pageUrl, ogImageUrl);
   $: selectedVideoName = desktopVideo?.name ?? videoFile?.name ?? '';
   $: selectedVideoSize = desktopVideo?.size ?? videoFile?.size ?? 0;
   $: hasSelectedVideo = Boolean(desktopVideo || videoFile);
@@ -257,6 +294,12 @@
 
   onMount(() => {
     isDesktop = isTauriRuntime();
+
+    if (initialLocale !== 'en') {
+      applyLocale(initialLocale);
+      localStorage.setItem('8disc:locale', initialLocale);
+      return;
+    }
 
     const savedLocale = localStorage.getItem('8disc:locale');
 
@@ -321,6 +364,46 @@
 
   function isLocale(value: string | null): value is Locale {
     return value === 'en' || value === 'pt';
+  }
+
+  function createStructuredData(
+    currentText: Translation,
+    currentPageUrl: string,
+    currentOgImageUrl: string
+  ) {
+    return JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: siteName,
+      alternateName: '8disc video compressor',
+      url: currentPageUrl,
+      image: currentOgImageUrl,
+      screenshot: currentOgImageUrl,
+      description: currentText.metaDescription,
+      inLanguage: currentText.htmlLang,
+      applicationCategory: 'MultimediaApplication',
+      applicationSubCategory: 'Video compressor',
+      operatingSystem: 'Web, Windows, Linux',
+      browserRequirements: 'Requires JavaScript and WebAssembly for browser compression.',
+      isAccessibleForFree: true,
+      featureList: currentText.structuredFeatures,
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD'
+      },
+      creator: {
+        '@type': 'Person',
+        name: 'Markzuel',
+        url: 'https://github.com/lexmarcos'
+      },
+      sameAs: sameAsLinks,
+      potentialAction: {
+        '@type': 'UseAction',
+        name: currentText.compress,
+        target: currentPageUrl
+      }
+    }).replace(/</g, '\\u003c');
   }
 
   function isStatusKey(value: string): value is StatusKey {
@@ -1011,6 +1094,34 @@
 <svelte:head>
   <title>{text.metaTitle}</title>
   <meta name="description" content={text.metaDescription} />
+  <meta name="author" content="Markzuel" />
+  <meta
+    name="robots"
+    content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+  />
+  <link rel="canonical" href={pageUrl} />
+  {#each alternateLinks as alternate}
+    <link rel="alternate" hreflang={alternate.hreflang} href={alternate.href} />
+  {/each}
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content={siteName} />
+  <meta property="og:title" content={text.ogTitle} />
+  <meta property="og:description" content={text.ogDescription} />
+  <meta property="og:url" content={pageUrl} />
+  <meta property="og:image" content={ogImageUrl} />
+  <meta property="og:image:alt" content={text.ogTitle} />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:locale" content={text.htmlLang.replace('-', '_')} />
+  {#each localizedPages.filter((page) => page.locale !== locale) as alternateLocale}
+    <meta property="og:locale:alternate" content={alternateLocale.hreflang.replace('-', '_')} />
+  {/each}
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={text.ogTitle} />
+  <meta name="twitter:description" content={text.ogDescription} />
+  <meta name="twitter:image" content={ogImageUrl} />
+  {@html `<script type="application/ld+json">${structuredData}</script>`}
 </svelte:head>
 
 <svelte:window onclick={handleWindowClick} onkeydown={handleWindowKeydown} />
@@ -1148,19 +1259,20 @@
 
         <div class="flex items-center border border-[#fbfbff]/35" role="group" aria-label={text.languageLabel}>
           {#each languageOptions as option}
-            <button
-              type="button"
+            <a
               class={[
-                'min-h-8 px-3 text-[10px] font-black uppercase tracking-[0.16em] transition focus:outline-none focus:ring-2 focus:ring-[#fbfbff]',
+                'grid min-h-8 place-items-center px-3 text-[10px] font-black uppercase tracking-[0.16em] transition focus:outline-none focus:ring-2 focus:ring-[#fbfbff]',
                 locale === option.code
                   ? 'bg-[#fbfbff] text-[#1713c8]'
                   : 'bg-transparent text-[#d8d7ff] hover:bg-[#fbfbff]/15 hover:text-[#fbfbff]'
               ]}
-              aria-pressed={locale === option.code}
+              href={option.href}
+              hreflang={option.hreflang}
+              aria-current={locale === option.code ? 'page' : undefined}
               onclick={() => setLocale(option.code)}
             >
               {option.label}
-            </button>
+            </a>
           {/each}
         </div>
       </div>

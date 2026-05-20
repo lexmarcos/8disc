@@ -1,0 +1,24 @@
+{
+  "name": "8disc - Local video compressor",
+  "short_name": "8disc",
+  "description": "Compress videos locally to Discord-friendly sizes without uploading files.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1713c8",
+  "theme_color": "#1713c8",
+  "categories": ["utilities", "video", "productivity"],
+  "icons": [
+    {
+      "src": "/Logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/Logo.ico",
+      "sizes": "16x16 32x32 48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
