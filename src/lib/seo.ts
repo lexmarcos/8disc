@@ -7,7 +7,9 @@ function normalizeSiteOrigin(origin: string) {
 
 export const siteOrigin = normalizeSiteOrigin(configuredSiteOrigin || fallbackSiteOrigin);
 export const siteName = '8disc';
-export const ogImagePath = '/og-image.png';
+export const ogImagePath = '/embed.png';
+export const ogImageWidth = 1731;
+export const ogImageHeight = 909;
 
 export const localizedPages = [
   { locale: 'en', hreflang: 'en', path: '/', label: 'English' },
