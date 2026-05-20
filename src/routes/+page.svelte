@@ -35,6 +35,14 @@
     width: number | null;
     height: number | null;
   };
+  type WebEncodeProfile = {
+    isIOS: boolean;
+    maxLongEdge: number;
+    maxVideoKbps: number;
+    preset: 'ultrafast' | 'veryfast';
+    threads: number | null;
+    videoProfile: 'baseline' | null;
+  };
   type FfmpegLoadConfig = {
     coreURL: string;
     wasmURL: string;
@@ -129,8 +137,11 @@
         invalidFile: 'Upload a video file.',
         fileTooLarge: 'This video is too large for browser compression. Use a file up to 2 GB.',
         readerFailed: 'Could not load the file reader.',
+        invalidOutput:
+          'This browser returned an invalid video file. On iOS, try a shorter or lower-resolution video.',
         compressFailed: 'Could not compress this video.'
       },
+      loadingProgress: (value: number) => `Loading FFmpeg ${value}%`,
       progress: (value: number) => `Compressing ${value}%`
     },
     pt: {
@@ -194,8 +205,11 @@
         invalidFile: 'Envie um arquivo de video.',
         fileTooLarge: 'Este video e grande demais para compressao no navegador. Use um arquivo de ate 2 GB.',
         readerFailed: 'Nao foi possivel carregar o leitor de arquivos.',
+        invalidOutput:
+          'Este navegador retornou um video invalido. No iOS, tente um video mais curto ou com menor resolucao.',
         compressFailed: 'Nao foi possivel comprimir o video.'
       },
+      loadingProgress: (value: number) => `Carregando FFmpeg ${value}%`,
       progress: (value: number) => `Comprimindo ${value}%`
     }
   } as const;
@@ -230,6 +244,7 @@
   const SIZE_RETRY_TIGHTENING = 0.96;
   const SIZE_RETRY_EXPANSION = 0.98;
   const MIN_VIDEO_KBPS = 80;
+  const MIN_VALID_MP4_BYTES = 1024;
   const FFMPEG_LOAD_TIMEOUT_MS = 20_000;
   const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
   const resizeHandles: ResizeHandle[] = [
@@ -264,6 +279,8 @@
   let isLoadingEngine = false;
   let isCompressing = false;
   let progress = 0;
+  let engineLoadProgress = 0;
+  let engineLoadTimer: number | null = null;
   let statusKey: StatusKey = 'chooseVideo';
   let errorKey: ErrorKey | '' = '';
   let compressedUrl = '';
@@ -292,8 +309,20 @@
   $: inputSize = selectedVideoSize ? formatBytes(selectedVideoSize) : '';
   $: outputSize = compressedSize ? formatBytes(compressedSize) : '';
   $: engineLabel =
-    isCompressing && progress > 0 ? text.progress(progress) : text.status[statusKey];
+    isLoadingEngine
+      ? text.loadingProgress(engineLoadProgress)
+      : isCompressing && progress > 0
+        ? text.progress(progress)
+        : text.status[statusKey];
   $: engineDetail = activeEncoder ? `${engineLabel} / ${activeEncoder}` : engineLabel;
+  $: progressBarValue = isLoadingEngine
+    ? engineLoadProgress
+    : isCompressing || progress === 100
+      ? progress
+      : 0;
+  $: progressRightLabel = isLoadingEngine
+    ? `${engineLoadProgress}%`
+    : `${selectedTarget} ${text.megabytes}`;
   $: errorText = errorKey ? text.errors[errorKey] : '';
 
   onMount(() => {
@@ -325,6 +354,7 @@
 
   onDestroy(() => {
     clearCompressedOutput();
+    stopEngineLoadProgress();
 
     if (notificationAudioContext) {
       void notificationAudioContext.close();
@@ -578,9 +608,11 @@
     isLoadingEngine = true;
     isCompressing = false;
     progress = 0;
+    engineLoadProgress = 0;
     statusKey = 'preparingFfmpeg';
 
     try {
+      const webProfile = createWebEncodeProfile();
       const encoder = await loadEncoder();
       cleanupEncoder = encoder;
       const helper = fetchFile;
@@ -591,12 +623,13 @@
       }
 
       isLoadingEngine = false;
+      stopEngineLoadProgress(100);
       isCompressing = true;
       statusKey = 'calculating';
 
       const info = videoInfo ?? (await readVideoInfo(videoFile));
       inputName = `input.${getExtension(videoFile.name)}`;
-      const basePlan = createEncodePlan(info, jobTarget);
+      const basePlan = createEncodePlan(info, jobTarget, webProfile);
 
       await safeDelete(encoder, inputName);
       await safeDelete(encoder, outputName);
@@ -604,17 +637,26 @@
 
       statusKey = 'compressingLocal';
       let activePlan = basePlan;
-      let resultBlob = createVideoBlob(await runEncode(encoder, inputName, outputName, activePlan));
+      let resultBlob = createVideoBlob(
+        await runEncode(encoder, inputName, outputName, activePlan, webProfile)
+      );
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const adjustedPlan = createSizeAdjustedPlan(activePlan, jobTargetBytes, resultBlob.size);
+        const adjustedPlan = createSizeAdjustedPlan(
+          activePlan,
+          jobTargetBytes,
+          resultBlob.size,
+          webProfile
+        );
         if (!adjustedPlan) {
           break;
         }
 
         activePlan = adjustedPlan;
         statusKey = 'adjustingTarget';
-        resultBlob = createVideoBlob(await runEncode(encoder, inputName, outputName, activePlan));
+        resultBlob = createVideoBlob(
+          await runEncode(encoder, inputName, outputName, activePlan, webProfile)
+        );
       }
 
       compressedUrl = URL.createObjectURL(resultBlob);
@@ -625,7 +667,7 @@
       playCompletionSound();
     } catch (error) {
       if (!errorKey) {
-        errorKey = 'compressFailed';
+        errorKey = getCompressionErrorKey(error);
       }
       errorDetail = formatErrorDetail(error);
       statusKey = 'compressionFailed';
@@ -638,6 +680,7 @@
         await safeDelete(cleanupEncoder, outputName);
       }
       isLoadingEngine = false;
+      stopEngineLoadProgress();
       isCompressing = false;
     }
   }
@@ -719,19 +762,23 @@
 
   async function loadEncoder() {
     if (ffmpeg && fetchFile) {
+      engineLoadProgress = 100;
       return ffmpeg;
     }
 
+    setEngineLoadProgress(8);
     const [{ FFmpeg }, util] = await Promise.all([
       import('@ffmpeg/ffmpeg'),
       import('@ffmpeg/util')
     ]);
+    setEngineLoadProgress(18);
     const coreConfigs = supportsMultithreadEncoder()
       ? [
           { label: 'wasm mt', config: await loadMultithreadCore() },
           { label: 'wasm', config: await loadSingleThreadCore() }
         ]
       : [{ label: 'wasm', config: await loadSingleThreadCore() }];
+    setEngineLoadProgress(32);
 
     let lastError: unknown;
 
@@ -739,14 +786,18 @@
       const instance = createFfmpegInstance(FFmpeg);
       activeEncoder = label;
       statusKey = 'loadingFfmpeg';
+      setEngineLoadProgress(Math.max(engineLoadProgress, 42));
+      startEngineLoadProgress();
 
       try {
         await loadFfmpegInstance(instance, config);
+        stopEngineLoadProgress(100);
         ffmpeg = instance;
         fetchFile = util.fetchFile as FetchFile;
         return instance;
       } catch (error) {
         lastError = error;
+        stopEngineLoadProgress(Math.max(engineLoadProgress, 55));
         instance.terminate();
       }
     }
@@ -791,6 +842,54 @@
     );
   }
 
+  function createWebEncodeProfile(): WebEncodeProfile {
+    const isIOS = isIOSLikeDevice();
+
+    return {
+      isIOS,
+      maxLongEdge: isIOS ? 1280 : 1920,
+      maxVideoKbps: isIOS ? 3500 : 12000,
+      preset: isIOS ? 'ultrafast' : 'veryfast',
+      threads: isIOS ? 1 : null,
+      videoProfile: isIOS ? 'baseline' : null
+    };
+  }
+
+  function isIOSLikeDevice() {
+    if (!browser) return false;
+
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+  }
+
+  function setEngineLoadProgress(value: number) {
+    engineLoadProgress = Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  function startEngineLoadProgress() {
+    stopEngineLoadProgress();
+
+    engineLoadTimer = window.setInterval(() => {
+      if (!isLoadingEngine || engineLoadProgress >= 92) return;
+
+      const remaining = 92 - engineLoadProgress;
+      setEngineLoadProgress(engineLoadProgress + Math.max(1, Math.ceil(remaining * 0.08)));
+    }, 350);
+  }
+
+  function stopEngineLoadProgress(finalValue?: number) {
+    if (engineLoadTimer !== null) {
+      window.clearInterval(engineLoadTimer);
+      engineLoadTimer = null;
+    }
+
+    if (typeof finalValue === 'number') {
+      setEngineLoadProgress(finalValue);
+    }
+  }
+
   async function loadSingleThreadCore(): Promise<FfmpegLoadConfig> {
     const [core, wasm] = await Promise.all([
       import('@ffmpeg/core?url'),
@@ -821,20 +920,32 @@
     encoder: FFmpegInstance,
     inputName: string,
     outputName: string,
-    plan: EncodePlan
+    plan: EncodePlan,
+    profile?: WebEncodeProfile
   ) {
     await safeDelete(encoder, outputName);
-    await encoder.exec(buildArgs(inputName, outputName, plan));
+    const exitCode = await encoder.exec(buildArgs(inputName, outputName, plan, profile));
+
+    if (typeof exitCode === 'number' && exitCode !== 0) {
+      throw new Error(`ffmpeg-exit-${exitCode}`);
+    }
+
     const data = await encoder.readFile(outputName);
 
     if (!(data instanceof Uint8Array)) {
       throw new Error('invalid-ffmpeg-output');
     }
 
+    validateMp4Output(data);
     return data;
   }
 
-  function buildArgs(inputName: string, outputName: string, plan: EncodePlan) {
+  function buildArgs(
+    inputName: string,
+    outputName: string,
+    plan: EncodePlan,
+    profile?: WebEncodeProfile
+  ) {
     return [
       '-y',
       '-i',
@@ -846,7 +957,9 @@
       '-c:v',
       'libx264',
       '-preset',
-      'veryfast',
+      profile?.preset ?? 'veryfast',
+      ...(profile?.threads ? ['-threads', String(profile.threads)] : []),
+      ...(profile?.videoProfile ? ['-profile:v', profile.videoProfile, '-level', '3.1'] : []),
       '-b:v',
       `${plan.videoKbps}k`,
       '-maxrate',
@@ -860,21 +973,36 @@
       'aac',
       '-b:a',
       `${plan.audioKbps}k`,
+      '-ac',
+      '2',
+      '-ar',
+      '44100',
+      '-max_muxing_queue_size',
+      '1024',
       '-movflags',
       '+faststart',
+      '-f',
+      'mp4',
       outputName
     ];
   }
 
-  function createEncodePlan(info: VideoInfo, target: TargetSize): EncodePlan {
-    const duration = Math.max(info.duration || 1, 1);
+  function createEncodePlan(
+    info: VideoInfo,
+    target: TargetSize,
+    profile?: WebEncodeProfile
+  ): EncodePlan {
+    const duration = Number.isFinite(info.duration) && info.duration > 0 ? info.duration : 1;
     const totalKbps = Math.floor(
       ((target * MB * 8) / duration / 1000) * TARGET_BITRATE_UTILIZATION
     );
     const preferredAudio = target <= 8 ? 48 : target <= 16 ? 64 : 96;
     const audioKbps = Math.max(32, Math.min(preferredAudio, Math.floor(totalKbps * 0.22)));
-    const videoKbps = Math.max(MIN_VIDEO_KBPS, totalKbps - audioKbps);
-    const scale = chooseScale(info, videoKbps);
+    const videoKbps = Math.max(
+      MIN_VIDEO_KBPS,
+      Math.min(profile?.maxVideoKbps ?? Number.POSITIVE_INFINITY, totalKbps - audioKbps)
+    );
+    const scale = chooseScale(info, videoKbps, profile?.maxLongEdge);
 
     return {
       audioKbps,
@@ -887,7 +1015,8 @@
   function createSizeAdjustedPlan(
     plan: EncodePlan,
     targetByteSize: number,
-    outputByteSize: number
+    outputByteSize: number,
+    profile?: WebEncodeProfile
   ): EncodePlan | null {
     if (targetByteSize <= 0 || outputByteSize <= 0) {
       return null;
@@ -905,19 +1034,24 @@
     }
 
     if (outputByteSize < targetByteSize * SIZE_RETRY_LOWER_BOUND && ratio > 1) {
+      const maxVideoKbps = profile?.maxVideoKbps ?? Number.POSITIVE_INFINITY;
+      const expandedVideoKbps = Math.floor(plan.videoKbps * ratio * SIZE_RETRY_EXPANSION);
+      const videoKbps = Math.min(maxVideoKbps, Math.max(plan.videoKbps + 1, expandedVideoKbps));
+
+      if (videoKbps <= plan.videoKbps) {
+        return null;
+      }
+
       return {
         ...plan,
-        videoKbps: Math.max(
-          plan.videoKbps + 1,
-          Math.floor(plan.videoKbps * ratio * SIZE_RETRY_EXPANSION)
-        )
+        videoKbps
       };
     }
 
     return null;
   }
 
-  function chooseScale(info: VideoInfo, videoKbps: number) {
+  function chooseScale(info: VideoInfo, videoKbps: number, maxLongEdge?: number) {
     if (!info.width || !info.height) return null;
 
     const longEdge = Math.max(info.width, info.height);
@@ -927,13 +1061,16 @@
       RESOLUTION_TIERS.find(
         (tier) => longEdge >= tier.longEdge && videoKbps >= tier.minVideoKbps
       ) ?? RESOLUTION_TIERS[RESOLUTION_TIERS.length - 1];
+    const selectedLongEdge = maxLongEdge
+      ? Math.min(selectedTier.longEdge, maxLongEdge)
+      : selectedTier.longEdge;
 
-    if (!currentTier || selectedTier.longEdge >= longEdge) {
+    if (!currentTier || selectedLongEdge >= longEdge) {
       return null;
     }
 
-    const ratio = selectedTier.longEdge / longEdge;
-    const scaledLongEdge = makeEven(selectedTier.longEdge);
+    const ratio = selectedLongEdge / longEdge;
+    const scaledLongEdge = makeEven(selectedLongEdge);
     const scaledShortEdge = makeEven(shortEdge * ratio);
 
     return info.width >= info.height
@@ -1052,6 +1189,14 @@
     errorDetail = formatErrorDetail(error);
   }
 
+  function getCompressionErrorKey(error: unknown): ErrorKey {
+    if (error instanceof Error && error.message.startsWith('invalid-mp4-output')) {
+      return 'invalidOutput';
+    }
+
+    return 'compressFailed';
+  }
+
   function formatErrorDetail(error: unknown) {
     let detail = '';
 
@@ -1077,6 +1222,18 @@
     const arrayBuffer = new ArrayBuffer(data.byteLength);
     new Uint8Array(arrayBuffer).set(data);
     return new Blob([arrayBuffer], { type: 'video/mp4' });
+  }
+
+  function validateMp4Output(data: Uint8Array) {
+    if (data.byteLength < MIN_VALID_MP4_BYTES) {
+      throw new Error(`invalid-mp4-output:${data.byteLength}`);
+    }
+
+    const fileType = String.fromCharCode(...data.slice(4, 8));
+
+    if (fileType !== 'ftyp') {
+      throw new Error('invalid-mp4-output:missing-ftyp');
+    }
   }
 
   function formatBytes(bytes: number) {
@@ -1408,12 +1565,12 @@
       <div class="w-full max-w-2xl" aria-live="polite">
         <div class="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-[#d8d7ff]">
           <span>{engineDetail}</span>
-          <span>{selectedTarget} {text.megabytes}</span>
+          <span>{progressRightLabel}</span>
         </div>
-        <div class="mt-3 h-1 w-full bg-[#fbfbff]/20">
+        <div class="mt-3 h-1.5 w-full overflow-hidden bg-[#fbfbff]/20">
           <div
             class="h-full bg-[#fbfbff] transition-[width]"
-            style={`width: ${isCompressing || progress === 100 ? progress : 0}%`}
+            style={`width: ${progressBarValue}%`}
           ></div>
         </div>
         {#if errorText}
