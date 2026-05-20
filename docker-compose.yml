@@ -9,3 +9,9 @@ services:
       PORT: 2000
     ports:
       - "${APP_PORT}:2000"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true

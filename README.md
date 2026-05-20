@@ -108,6 +108,8 @@ The workflow creates/updates:
 - `${VPS_APP_DIR}/.env`
 - `${VPS_APP_DIR}/8disc-image.tar`
 
+The container joins the external Docker network `web`, which must already exist on the VPS.
+
 Verify a deployment:
 
 ```bash
