@@ -1,0 +1,11 @@
+services:
+  web:
+    image: ${APP_IMAGE}
+    container_name: ${CONTAINER_NAME}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 2000
+    ports:
+      - "${APP_PORT}:2000"

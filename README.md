@@ -70,36 +70,42 @@ pnpm serve:prod
 
 ## GitHub Actions VPS Deploy
 
-The workflow in `.github/workflows/deploy-vps.yml` builds the static site, uploads it to a VPS, installs a systemd service, and serves 8disc on port `2000`.
+The workflow in `.github/workflows/deploy-vps.yml` builds a Docker image, sends it to a VPS, and runs it with Docker Compose on port `2000`.
 
-Prepare the VPS:
+Prepare the VPS with Docker:
 
 ```bash
-sudo apt update
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker <deploy-user>
+sudo systemctl enable --now docker
 sudo ufw allow 2000/tcp
 ```
 
-Use `root` as the deploy user or a deploy user with passwordless `sudo` for `mkdir`, `tar`, `install`, and `systemctl`. The service runs as `www-data`, which is available on Debian/Ubuntu servers.
+Use `root` or a user with passwordless `sudo` for deployment commands (`docker`, `mkdir`, `cp`).
 
-Add these GitHub repository secrets:
+Add these GitHub environment secrets (`production`):
 
 - `VPS_HOST`: server IP or hostname
 - `VPS_USER`: SSH user
 - `VPS_SSH_KEY`: private SSH key allowed to connect to the VPS
 - `PUBLIC_SITE_URL`: final public origin, for example `https://8disc.example.com`
 
-Optional secrets:
+Optional:
 
 - `VPS_PORT`: SSH port, defaults to `22`
-- `VPS_APP_DIR`: app directory, defaults to `/opt/8disc`
+- `VPS_APP_DIR`: deployment directory, defaults to `/opt/8disc`
 
-The deployment creates `/opt/8disc/current`, keeps recent releases in `/opt/8disc/releases`, and restarts the `8disc` systemd service. Verify it after a deploy:
+The workflow creates/updates:
+
+- `${VPS_APP_DIR}/docker-compose.yml`
+- `${VPS_APP_DIR}/.env`
+- `${VPS_APP_DIR}/8disc-image.tar`
+
+Verify a deployment:
 
 ```bash
-curl -I http://127.0.0.1:2000/
-sudo systemctl status 8disc --no-pager
+docker ps --filter name=8disc
+curl -I http://127.0.0.1:2000/robots.txt
 ```
 
 ## Optional Caddy Reverse Proxy
