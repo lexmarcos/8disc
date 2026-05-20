@@ -8,7 +8,9 @@
   import {
     absoluteUrl,
     localizedPages,
+    ogImageHeight,
     ogImagePath,
+    ogImageWidth,
     siteName,
     xDefaultPath
   } from '$lib/seo';
@@ -1120,8 +1122,11 @@
   <meta property="og:description" content={text.ogDescription} />
   <meta property="og:url" content={pageUrl} />
   <meta property="og:image" content={ogImageUrl} />
+  <meta property="og:image:secure_url" content={ogImageUrl} />
   <meta property="og:image:alt" content={text.ogTitle} />
   <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content={String(ogImageWidth)} />
+  <meta property="og:image:height" content={String(ogImageHeight)} />
   <meta property="og:locale" content={text.htmlLang.replace('-', '_')} />
   {#each localizedPages.filter((page) => page.locale !== locale) as alternateLocale}
     <meta property="og:locale:alternate" content={alternateLocale.hreflang.replace('-', '_')} />
