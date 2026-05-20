@@ -76,19 +76,19 @@ Prepare the VPS with Docker:
 
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker <deploy-user>
 sudo systemctl enable --now docker
+sudo docker compose version
 sudo ufw allow 2000/tcp
 ```
 
-Use `root` or a user with passwordless `sudo` for deployment commands (`docker`, `mkdir`, `cp`).
+Use `root` or a user with passwordless `sudo` for deployment commands (`docker`, `mkdir`, `cp`). The workflow runs Docker through `sudo` on the VPS.
 
 Add these GitHub environment secrets (`production`):
 
 - `VPS_HOST`: server IP or hostname
 - `VPS_USER`: SSH user
 - `VPS_SSH_KEY`: private SSH key allowed to connect to the VPS
-- `PUBLIC_SITE_URL`: final public origin, for example `https://8disc.example.com`
+- `PUBLIC_SITE_URL`: required final public origin, for example `https://8disc.example.com`
 
 Optional:
 
@@ -104,7 +104,7 @@ The workflow creates/updates:
 Verify a deployment:
 
 ```bash
-docker ps --filter name=8disc
+sudo docker ps --filter name=8disc
 curl -I http://127.0.0.1:2000/robots.txt
 ```
 

@@ -31,11 +31,13 @@ jobs:
 
       - name: Validate deployment configuration
         env:
+          PUBLIC_SITE_URL: ${{ secrets.PUBLIC_SITE_URL }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -Eeuo pipefail
+          : "${PUBLIC_SITE_URL:?Set the PUBLIC_SITE_URL secret}"
           : "${VPS_HOST:?Set the VPS_HOST secret}"
           : "${VPS_USER:?Set the VPS_USER secret}"
           : "${VPS_SSH_KEY:?Set the VPS_SSH_KEY secret}"
@@ -60,14 +62,16 @@ jobs:
       - name: Build Docker image
         id: docker_image
         env:
-          PUBLIC_SITE_URL_SECRET: ${{ secrets.PUBLIC_SITE_URL }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
+          PUBLIC_SITE_URL: ${{ secrets.PUBLIC_SITE_URL }}
         run: |
           set -Eeuo pipefail
-          site_url="${PUBLIC_SITE_URL_SECRET:-http://${VPS_HOST}:${APP_PORT}}"
+          : "${PUBLIC_SITE_URL:?Set the PUBLIC_SITE_URL secret}"
           image_tag="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}"
           docker build \
-            --build-arg PUBLIC_SITE_URL="$site_url" \
+            --build-arg PUBLIC_SITE_URL="$PUBLIC_SITE_URL" \
+            --label "com.8disc.service=${SERVICE_NAME}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
             -t "${SERVICE_NAME}:${image_tag}" \
             .
           docker save -o /tmp/8disc-image.tar "${SERVICE_NAME}:${image_tag}"
@@ -114,7 +118,7 @@ jobs:
             exit 1
           fi
 
-          if ! docker compose version >/dev/null 2>&1; then
+          if ! sudo docker compose version >/dev/null 2>&1; then
             echo "Docker Compose plugin is required on the VPS." >&2
             exit 1
           fi
@@ -125,8 +129,7 @@ jobs:
           printf 'APP_IMAGE=%s\nAPP_PORT=%s\nCONTAINER_NAME=%s\n' "$APP_IMAGE" "$APP_PORT" "$SERVICE_NAME" | \
             sudo tee "$APP_DIR/.env" >/dev/null
           sudo docker image load -i "$APP_DIR/8disc-image.tar"
-          sudo APP_IMAGE="$APP_IMAGE" APP_PORT="$APP_PORT" CONTAINER_NAME="$SERVICE_NAME" \
-            docker compose -f "$APP_DIR/docker-compose.yml" --env-file "$APP_DIR/.env" up -d --remove-orphans
+          sudo docker compose -f "$APP_DIR/docker-compose.yml" --env-file "$APP_DIR/.env" up -d --remove-orphans
 
           for attempt in $(seq 1 20); do
             if curl -fsS "http://127.0.0.1:${APP_PORT}/robots.txt"; then
@@ -134,9 +137,17 @@ jobs:
             fi
             if [ "$attempt" -eq 20 ]; then
               echo "Health check failed after 20 attempts" >&2
-              docker compose -f "$APP_DIR/docker-compose.yml" --env-file "$APP_DIR/.env" ps
+              sudo docker compose -f "$APP_DIR/docker-compose.yml" --env-file "$APP_DIR/.env" ps
               exit 1
             fi
             sleep 3
           done
+
+          current_image_id="$(sudo docker image inspect -f '{{.Id}}' "$APP_IMAGE")"
+          sudo docker images --filter "label=com.8disc.service=$SERVICE_NAME" --format '{{.Repository}}:{{.Tag}} {{.ID}}' | \
+            while read -r image_name image_id; do
+              if [ "$image_name" != "$APP_IMAGE" ] && [ "$image_id" != "$current_image_id" ]; then
+                sudo docker image rm "$image_name" >/dev/null 2>&1 || true
+              fi
+            done
           REMOTE

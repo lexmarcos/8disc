@@ -5,3 +5,7 @@ node_modules
 npm-debug.log
 dist
 .svelte-kit
+build
+coverage
+target
+src-tauri/target
