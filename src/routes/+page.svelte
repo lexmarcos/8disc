@@ -1,5 +1,10 @@
 <script lang="ts">
   import { browser } from '$app/environment';
+  import {
+    desktopDownloadOptions as defaultDesktopDownloadOptions,
+    resolveLatestDesktopDownloads,
+    type DesktopDownloadOption
+  } from '$lib/downloads';
   import { absoluteUrl, localizedPages, ogImagePath, siteName, xDefaultPath } from '$lib/seo';
   import { onDestroy, onMount } from 'svelte';
   import type { FFmpeg as FFmpegInstance } from '@ffmpeg/ffmpeg';
@@ -218,16 +223,6 @@
   const SIZE_RETRY_EXPANSION = 0.98;
   const MIN_VIDEO_KBPS = 80;
   const FFMPEG_LOAD_TIMEOUT_MS = 20_000;
-  const desktopDownloadOptions = [
-    {
-      platform: 'windows',
-      href: 'https://github.com/lexmarcos/8disc/releases/download/v0.10.0/8disc-0.1.0-windows-x64.zip'
-    },
-    {
-      platform: 'linux',
-      href: 'https://github.com/lexmarcos/8disc/releases/download/v0.20.0/8disc-0.20.0-linux-x64.zip'
-    }
-  ] as const;
   const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
   const resizeHandles: ResizeHandle[] = [
     { direction: 'North', className: 'absolute inset-x-3 top-0 z-40 h-1 cursor-n-resize' },
@@ -271,6 +266,7 @@
   let errorDetail = '';
   let downloadMenuOpen = false;
   let downloadMenuElement: HTMLDivElement;
+  let desktopDownloadOptions: DesktopDownloadOption[] = defaultDesktopDownloadOptions;
   let notificationAudioContext: AudioContext | null = null;
 
   $: text = translations[locale];
@@ -294,6 +290,7 @@
 
   onMount(() => {
     isDesktop = isTauriRuntime();
+    void refreshDesktopDownloadOptions();
 
     if (initialLocale !== 'en') {
       applyLocale(initialLocale);
@@ -309,6 +306,14 @@
       applyLocale(detectDeviceLocale());
     }
   });
+
+  async function refreshDesktopDownloadOptions() {
+    try {
+      desktopDownloadOptions = await resolveLatestDesktopDownloads();
+    } catch (error) {
+      console.warn('Could not resolve latest desktop downloads', error);
+    }
+  }
 
   onDestroy(() => {
     clearCompressedOutput();
