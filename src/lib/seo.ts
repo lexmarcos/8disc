@@ -7,9 +7,7 @@ function normalizeSiteOrigin(origin: string) {
 
 export const siteOrigin = normalizeSiteOrigin(configuredSiteOrigin || fallbackSiteOrigin);
 export const siteName = '8disc';
-export const ogImagePath = '/embed.png';
-export const ogImageWidth = 1731;
-export const ogImageHeight = 909;
+export const ogImagePath = 'https://i.imgur.com/9cBXKJ8.png';
 
 export const localizedPages = [
   { locale: 'en', hreflang: 'en', path: '/', label: 'English' },
@@ -21,6 +19,8 @@ export const xDefaultPath = '/';
 export type SeoLocale = (typeof localizedPages)[number]['locale'];
 
 export function absoluteUrl(path: string) {
+  if (/^https?:\/\//i.test(path)) return path;
+
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${siteOrigin}${normalizedPath}`;
 }
