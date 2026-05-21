@@ -10,6 +10,7 @@
     localizedPages,
     ogImageHeight,
     ogImagePath,
+    ogImageType,
     ogImageWidth,
     siteName,
     xDefaultPath
@@ -1315,7 +1316,7 @@
   <meta property="og:image" content={ogImageUrl} />
   <meta property="og:image:secure_url" content={ogImageUrl} />
   <meta property="og:image:alt" content={text.ogTitle} />
-  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:type" content={ogImageType} />
   <meta property="og:image:width" content={String(ogImageWidth)} />
   <meta property="og:image:height" content={String(ogImageHeight)} />
   <meta property="og:locale" content={text.htmlLang.replace('-', '_')} />

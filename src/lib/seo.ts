@@ -12,7 +12,8 @@ export const siteOrigin = normalizeSiteOrigin(
     : fallbackSiteOrigin
 );
 export const siteName = '8disc';
-export const ogImagePath = '/og-image.png';
+export const ogImagePath = '/og-image.jpg';
+export const ogImageType = 'image/jpeg';
 export const ogImageWidth = 1200;
 export const ogImageHeight = 630;
 
