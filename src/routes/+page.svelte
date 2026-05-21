@@ -19,7 +19,7 @@
   import type { FFmpeg as FFmpegInstance } from '@ffmpeg/ffmpeg';
 
   type PageMode = 'standard' | 'advanced';
-  type TargetSize = 8 | 16 | 25 | 50 | 100;
+  type TargetSize = 8 | 16 | 50 | 100;
   type FfmpegCorePreference = 'auto' | 'single' | 'multi';
   type LoadedFfmpegCore = 'single' | 'multi';
   type H264Preset = 'ultrafast' | 'superfast' | 'veryfast' | 'faster' | 'fast' | 'medium';
@@ -119,7 +119,7 @@
       htmlLang: 'en',
       metaTitle: '8disc - Compress Video to 8MB for Discord',
       metaDescription:
-        'Compress MP4, MOV, MKV, WebM and other videos locally to 8 MB, 16 MB, 25 MB, 50 MB or 100 MB for Discord. Private, fast and no uploads.',
+        'Compress MP4, MOV, MKV, WebM and other videos locally to 8 MB, 16 MB, 50 MB or 100 MB for Discord. Private, fast and no uploads.',
       ogTitle: '8disc - Local Discord video compressor',
       ogDescription:
         'Shrink videos in your browser or desktop app to Discord-friendly sizes without uploading files.',
@@ -208,7 +208,7 @@
       htmlLang: 'pt-BR',
       metaTitle: '8disc - Comprimir vídeo para 8 MB no Discord',
       metaDescription:
-        'Comprima MP4, MOV, MKV, WebM e outros vídeos localmente para 8 MB, 16 MB, 25 MB, 50 MB ou 100 MB no Discord. Privado, rápido e sem upload.',
+        'Comprima MP4, MOV, MKV, WebM e outros vídeos localmente para 8 MB, 16 MB, 50 MB ou 100 MB no Discord. Privado, rápido e sem upload.',
       ogTitle: '8disc - Compressor local de vídeo para Discord',
       ogDescription:
         'Reduza vídeos no navegador ou app desktop para tamanhos compatíveis com o Discord sem enviar arquivos para servidores.',
@@ -306,7 +306,7 @@
     mode = 'standard'
   }: { initialLocale?: Locale; canonicalPath?: string; mode?: PageMode } = $props();
 
-  const targetSizes = [8, 16, 25, 50, 100] as const;
+  const targetSizes = [8, 16, 50, 100] as const;
   const standardLanguageOptions = [
     { code: 'en', label: 'EN', href: '/', hreflang: 'en' },
     { code: 'pt', label: 'PT', href: '/pt/', hreflang: 'pt-BR' }
