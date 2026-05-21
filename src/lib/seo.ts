@@ -1,15 +1,20 @@
-const fallbackSiteOrigin = 'https://8disc.app';
+const fallbackSiteOrigin = 'https://8disc.pro';
 const configuredSiteOrigin = import.meta.env.PUBLIC_SITE_URL as string | undefined;
+const legacySiteOrigin = 'https://8disc.app';
 
 function normalizeSiteOrigin(origin: string) {
   return origin.replace(/\/+$/, '');
 }
 
-export const siteOrigin = normalizeSiteOrigin(configuredSiteOrigin || fallbackSiteOrigin);
+export const siteOrigin = normalizeSiteOrigin(
+  configuredSiteOrigin && configuredSiteOrigin !== legacySiteOrigin
+    ? configuredSiteOrigin
+    : fallbackSiteOrigin
+);
 export const siteName = '8disc';
-export const ogImagePath = 'https://i.imgur.com/9cBXKJ8.png';
-export const ogImageWidth = 1731;
-export const ogImageHeight = 909;
+export const ogImagePath = '/og-image.png';
+export const ogImageWidth = 1200;
+export const ogImageHeight = 630;
 
 export const localizedPages = [
   { locale: 'en', hreflang: 'en', path: '/', label: 'English' },
