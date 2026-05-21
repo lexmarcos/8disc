@@ -28,8 +28,8 @@
   color: #fbfbff;
   background: #1713c8;
   font-family:
-    'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Code',
-    'Liberation Mono', Menlo, monospace;
+    ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Liberation Mono', Menlo,
+    'JetBrains Mono', monospace;
   font-synthesis: none;
   text-rendering: geometricPrecision;
 }
