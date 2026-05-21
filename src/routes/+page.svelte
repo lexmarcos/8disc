@@ -87,6 +87,13 @@
     wasmURL: string;
     workerURL?: string;
   };
+  type PreparedFfmpegLoadConfig = {
+    config: FfmpegLoadConfig;
+    blobURLs: string[];
+  };
+  type ToBlobURL = typeof import('@ffmpeg/util')['toBlobURL'];
+  type ToBlobURLProgressCallback = NonNullable<Parameters<ToBlobURL>[3]>;
+  type FfmpegDownloadProgress = Parameters<ToBlobURLProgressCallback>[0];
   type DesktopCompressionProgress = {
     jobId: string;
     percent: number;
@@ -334,7 +341,7 @@
   const MIN_VALID_MP4_BYTES = 1024;
   const FFMPEG_LOAD_TIMEOUT_MS = 30_000;
   const MOBILE_FFMPEG_LOAD_TIMEOUT_MS = 90_000;
-  const IOS_FFMPEG_LOAD_TIMEOUT_MS = 120_000;
+  const IOS_FFMPEG_LOAD_TIMEOUT_MS = 180_000;
   const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
   const resizeHandles: ResizeHandle[] = [
     { direction: 'North', className: 'absolute inset-x-3 top-0 z-40 h-1 cursor-n-resize' },
@@ -378,6 +385,7 @@
   let ffmpeg: FFmpegInstance | null = null;
   let fetchFile: FetchFile | null = null;
   let loadedFfmpegCore: LoadedFfmpegCore | null = null;
+  let ffmpegBlobUrls: string[] = [];
 
   let isDragging = $state(false);
   let isLoadingEngine = $state(false);
@@ -482,6 +490,7 @@
 
   onDestroy(() => {
     clearCompressedOutput();
+    clearLoadedFfmpeg();
     stopEngineLoadProgress();
 
     if (notificationAudioContext) {
@@ -892,10 +901,7 @@
     }
 
     if (ffmpeg) {
-      ffmpeg.terminate();
-      ffmpeg = null;
-      fetchFile = null;
-      loadedFfmpegCore = null;
+      clearLoadedFfmpeg();
     }
 
     setEngineLoadProgress(8);
@@ -911,21 +917,27 @@
 
     for (const { label, config } of coreConfigs) {
       const instance = createFfmpegInstance(FFmpeg);
+      let preparedConfig: PreparedFfmpegLoadConfig | null = null;
       activeEncoder = label;
       statusKey = 'loadingFfmpeg';
       setEngineLoadProgress(Math.max(engineLoadProgress, 42));
-      startEngineLoadProgress();
 
       try {
-        await loadFfmpegInstance(instance, config);
+        preparedConfig = await prepareFfmpegLoadConfig(config, util.toBlobURL as ToBlobURL);
+        startEngineLoadProgress();
+        await loadFfmpegInstance(instance, preparedConfig.config);
         stopEngineLoadProgress(100);
         ffmpeg = instance;
         fetchFile = util.fetchFile as FetchFile;
         loadedFfmpegCore = label === 'wasm mt' ? 'multi' : 'single';
+        ffmpegBlobUrls = preparedConfig.blobURLs;
         return instance;
       } catch (error) {
         lastError = error;
         stopEngineLoadProgress(Math.max(engineLoadProgress, 55));
+        if (preparedConfig) {
+          revokeFfmpegBlobUrls(preparedConfig.blobURLs);
+        }
         instance.terminate();
       }
     }
@@ -1006,6 +1018,83 @@
     if (isIOSLikeDevice()) return IOS_FFMPEG_LOAD_TIMEOUT_MS;
     if (isMobileLikeDevice()) return MOBILE_FFMPEG_LOAD_TIMEOUT_MS;
     return FFMPEG_LOAD_TIMEOUT_MS;
+  }
+
+  async function prepareFfmpegLoadConfig(
+    config: FfmpegLoadConfig,
+    toBlobURL: ToBlobURL
+  ): Promise<PreparedFfmpegLoadConfig> {
+    if (!shouldUseBlobFfmpegAssets()) {
+      return { config, blobURLs: [] };
+    }
+
+    const blobURLs: string[] = [];
+
+    try {
+      const coreURL = await createFfmpegBlobURL(
+        config.coreURL,
+        'text/javascript',
+        toBlobURL,
+        blobURLs,
+        42,
+        50
+      );
+      const wasmURL = await createFfmpegBlobURL(
+        config.wasmURL,
+        'application/wasm',
+        toBlobURL,
+        blobURLs,
+        50,
+        config.workerURL ? 84 : 88
+      );
+      const workerURL = config.workerURL
+        ? await createFfmpegBlobURL(config.workerURL, 'text/javascript', toBlobURL, blobURLs, 84, 88)
+        : undefined;
+
+      return {
+        config: {
+          coreURL,
+          wasmURL,
+          ...(workerURL ? { workerURL } : {})
+        },
+        blobURLs
+      };
+    } catch (error) {
+      revokeFfmpegBlobUrls(blobURLs);
+      throw error;
+    }
+  }
+
+  async function createFfmpegBlobURL(
+    url: string,
+    mimeType: string,
+    toBlobURL: ToBlobURL,
+    blobURLs: string[],
+    progressStart: number,
+    progressEnd: number
+  ) {
+    const blobURL = await toBlobURL(url, mimeType, true, (event) =>
+      updateFfmpegAssetLoadProgress(event, progressStart, progressEnd)
+    );
+    blobURLs.push(blobURL);
+    setEngineLoadProgress(Math.max(engineLoadProgress, progressEnd));
+    return blobURL;
+  }
+
+  function updateFfmpegAssetLoadProgress(
+    event: FfmpegDownloadProgress,
+    progressStart: number,
+    progressEnd: number
+  ) {
+    if (!Number.isFinite(event.total) || event.total <= 0) return;
+
+    const ratio = Math.max(0, Math.min(1, event.received / event.total));
+    const nextProgress = progressStart + (progressEnd - progressStart) * ratio;
+    setEngineLoadProgress(Math.max(engineLoadProgress, nextProgress));
+  }
+
+  function shouldUseBlobFfmpegAssets() {
+    return isMobileLikeDevice();
   }
 
   function createWebEncodeProfile(): WebEncodeProfile {
@@ -1393,6 +1482,24 @@
     desktopOutputPath = '';
     compressedSize = 0;
     activeEncoder = '';
+  }
+
+  function clearLoadedFfmpeg() {
+    if (ffmpeg) {
+      ffmpeg.terminate();
+    }
+
+    ffmpeg = null;
+    fetchFile = null;
+    loadedFfmpegCore = null;
+    revokeFfmpegBlobUrls(ffmpegBlobUrls);
+    ffmpegBlobUrls = [];
+  }
+
+  function revokeFfmpegBlobUrls(urls: string[]) {
+    for (const url of urls) {
+      URL.revokeObjectURL(url);
+    }
   }
 
   function setCompressionError(error: unknown, key: ErrorKey = 'compressFailed') {
