@@ -280,6 +280,7 @@
   let isDragging = false;
   let isLoadingEngine = false;
   let isCompressing = false;
+  let compressionRequestLocked = false;
   let progress = 0;
   let engineLoadProgress = 0;
   let engineLoadTimer: number | null = null;
@@ -308,7 +309,12 @@
   $: isVideoAtOrBelowTarget =
     hasSelectedVideo && selectedVideoSize > 0 && selectedVideoSize <= targetBytes;
   $: canCompress =
-    hasSelectedVideo && !isVideoAtOrBelowTarget && !errorKey && !isLoadingEngine && !isCompressing;
+    hasSelectedVideo &&
+    !isVideoAtOrBelowTarget &&
+    !errorKey &&
+    !isLoadingEngine &&
+    !isCompressing &&
+    !compressionRequestLocked;
   $: inputSize = selectedVideoSize ? formatBytes(selectedVideoSize) : '';
   $: outputSize = compressedSize ? formatBytes(compressedSize) : '';
   $: engineLabel =
@@ -590,15 +596,26 @@
   }
 
   async function compressVideo() {
+    if (compressionRequestLocked || !canCompress) return;
+
+    compressionRequestLocked = true;
+
     if (isDesktop && desktopVideo) {
-      await prepareNotificationSound();
-      await compressDesktopVideo(desktopVideo);
+      try {
+        await prepareNotificationSound();
+        await compressDesktopVideo(desktopVideo);
+      } finally {
+        compressionRequestLocked = false;
+      }
       return;
     }
 
-    if (!videoFile) return;
-    await prepareNotificationSound();
+    if (!videoFile) {
+      compressionRequestLocked = false;
+      return;
+    }
 
+    const jobFile = videoFile;
     const jobTarget = selectedTarget;
     const jobTargetBytes = jobTarget * MB;
     let cleanupEncoder: FFmpegInstance | null = null;
@@ -616,6 +633,8 @@
     statusKey = 'preparingFfmpeg';
 
     try {
+      await prepareNotificationSound();
+
       const webProfile = createWebEncodeProfile();
       const encoder = await loadEncoder();
       cleanupEncoder = encoder;
@@ -631,13 +650,13 @@
       isCompressing = true;
       statusKey = 'calculating';
 
-      const info = videoInfo ?? (await readVideoInfo(videoFile));
-      inputName = `input.${getExtension(videoFile.name)}`;
+      const info = videoInfo ?? (await readVideoInfo(jobFile));
+      inputName = `input.${getExtension(jobFile.name)}`;
       const plan = createEncodePlan(info, jobTarget, webProfile);
 
       await safeDelete(encoder, inputName);
       await safeDelete(encoder, outputName);
-      await encoder.writeFile(inputName, await helper(videoFile));
+      await encoder.writeFile(inputName, await helper(jobFile));
 
       statusKey = 'compressingLocal';
       const resultBlob = createVideoBlob(
@@ -646,7 +665,7 @@
 
       compressedUrl = URL.createObjectURL(resultBlob);
       compressedSize = resultBlob.size;
-      compressedName = `${withoutExtension(videoFile.name)}-${jobTarget}mb.mp4`;
+      compressedName = `${withoutExtension(jobFile.name)}-${jobTarget}mb.mp4`;
       progress = 100;
       statusKey = resultBlob.size <= jobTargetBytes ? 'fileReady' : 'fileReadyOversized';
       playCompletionSound();
@@ -667,6 +686,7 @@
       isLoadingEngine = false;
       stopEngineLoadProgress();
       isCompressing = false;
+      compressionRequestLocked = false;
     }
   }
 
