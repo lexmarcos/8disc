@@ -41,6 +41,7 @@
     maxVideoKbps: number;
     preset: 'ultrafast' | 'veryfast';
     threads: number | null;
+    useFastStart: boolean;
     videoProfile: 'baseline' | null;
   };
   type FfmpegLoadConfig = {
@@ -135,7 +136,8 @@
       },
       errors: {
         invalidFile: 'Upload a video file.',
-        fileTooLarge: 'This video is too large for browser compression. Use a file up to 2 GB.',
+        fileTooLarge:
+          'This video is too large for browser compression. On iOS, use a smaller file or the desktop app.',
         readerFailed: 'Could not load the file reader.',
         invalidOutput:
           'This browser returned an invalid video file. On iOS, try a shorter or lower-resolution video.',
@@ -203,7 +205,8 @@
       },
       errors: {
         invalidFile: 'Envie um arquivo de video.',
-        fileTooLarge: 'Este video e grande demais para compressao no navegador. Use um arquivo de ate 2 GB.',
+        fileTooLarge:
+          'Este video e grande demais para compressao no navegador. No iOS, use um arquivo menor ou o app desktop.',
         readerFailed: 'Nao foi possivel carregar o leitor de arquivos.',
         invalidOutput:
           'Este navegador retornou um video invalido. No iOS, tente um video mais curto ou com menor resolucao.',
@@ -239,6 +242,7 @@
   ];
   const MB = 1024 * 1024;
   const MAX_INPUT_BYTES = 2 * 1024 * MB;
+  const IOS_MAX_INPUT_BYTES = 180 * MB;
   const TARGET_BITRATE_UTILIZATION = 0.97;
   const SIZE_RETRY_LOWER_BOUND = 0.94;
   const SIZE_RETRY_TIGHTENING = 0.96;
@@ -289,6 +293,7 @@
   let desktopOutputPath = '';
   let activeEncoder = '';
   let errorDetail = '';
+  let ffmpegLogLines: string[] = [];
   let downloadMenuOpen = false;
   let downloadMenuElement: HTMLDivElement;
   let desktopDownloadOptions: DesktopDownloadOption[] = defaultDesktopDownloadOptions;
@@ -529,7 +534,7 @@
 
     videoFile = file;
 
-    if (file.size > MAX_INPUT_BYTES) {
+    if (file.size > getBrowserMaxInputBytes()) {
       errorKey = 'fileTooLarge';
       videoInfo = null;
       statusKey = 'compressionFailed';
@@ -605,6 +610,7 @@
     errorKey = '';
     errorDetail = '';
     clearCompressedOutput();
+    ffmpegLogLines = [];
     isLoadingEngine = true;
     isCompressing = false;
     progress = 0;
@@ -808,6 +814,10 @@
   function createFfmpegInstance(FFmpeg: FFmpegConstructor) {
     const instance = new FFmpeg();
 
+    instance.on('log', ({ message }) => {
+      appendFfmpegLog(message);
+    });
+
     instance.on('progress', ({ progress: ratio }) => {
       if (isCompressing) {
         progress = Math.max(1, Math.min(99, Math.round(ratio * 100)));
@@ -838,6 +848,7 @@
     return (
       browser &&
       typeof SharedArrayBuffer !== 'undefined' &&
+      !isIOSLikeDevice() &&
       globalThis.crossOriginIsolated === true
     );
   }
@@ -847,10 +858,11 @@
 
     return {
       isIOS,
-      maxLongEdge: isIOS ? 1280 : 1920,
-      maxVideoKbps: isIOS ? 3500 : 12000,
+      maxLongEdge: isIOS ? 854 : 1920,
+      maxVideoKbps: isIOS ? 1400 : 12000,
       preset: isIOS ? 'ultrafast' : 'veryfast',
       threads: isIOS ? 1 : null,
+      useFastStart: !isIOS,
       videoProfile: isIOS ? 'baseline' : null
     };
   }
@@ -890,6 +902,22 @@
     }
   }
 
+  function appendFfmpegLog(message: string) {
+    const trimmedMessage = message.replace(/\s+/g, ' ').trim();
+
+    if (!trimmedMessage) return;
+
+    ffmpegLogLines = [...ffmpegLogLines.slice(-7), trimmedMessage];
+  }
+
+  function getRecentFfmpegLog() {
+    return ffmpegLogLines.slice(-4).join(' / ');
+  }
+
+  function getBrowserMaxInputBytes() {
+    return isIOSLikeDevice() ? IOS_MAX_INPUT_BYTES : MAX_INPUT_BYTES;
+  }
+
   async function loadSingleThreadCore(): Promise<FfmpegLoadConfig> {
     const [core, wasm] = await Promise.all([
       import('@ffmpeg/core?url'),
@@ -927,7 +955,8 @@
     const exitCode = await encoder.exec(buildArgs(inputName, outputName, plan, profile));
 
     if (typeof exitCode === 'number' && exitCode !== 0) {
-      throw new Error(`ffmpeg-exit-${exitCode}`);
+      const recentLog = getRecentFfmpegLog();
+      throw new Error(recentLog ? `ffmpeg-exit-${exitCode}: ${recentLog}` : `ffmpeg-exit-${exitCode}`);
     }
 
     const data = await encoder.readFile(outputName);
@@ -953,7 +982,13 @@
       '-map',
       '0:v:0',
       '-map',
-      '0:a?',
+      '0:a:0?',
+      '-sn',
+      '-dn',
+      '-map_metadata',
+      '-1',
+      '-map_chapters',
+      '-1',
       '-c:v',
       'libx264',
       '-preset',
@@ -979,8 +1014,7 @@
       '44100',
       '-max_muxing_queue_size',
       '1024',
-      '-movflags',
-      '+faststart',
+      ...(profile?.useFastStart === false ? [] : ['-movflags', '+faststart']),
       '-f',
       'mp4',
       outputName
