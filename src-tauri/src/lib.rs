@@ -6,11 +6,6 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::{process::CommandEvent, ShellExt};
 
-const SIZE_RETRY_LOWER_BOUND: f64 = 0.94;
-const SIZE_RETRY_TIGHTENING: f64 = 0.96;
-const SIZE_RETRY_EXPANSION: f64 = 0.98;
-const MIN_VIDEO_KBPS: u32 = 80;
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VideoProbe {
@@ -46,7 +41,6 @@ struct CompressRequest {
     input_path: String,
     output_path: String,
     plan: EncodePlan,
-    target_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,7 +112,7 @@ async fn compress_video(
     let encoders = detect_encoders_inner(&app).await?;
     let mut errors = Vec::new();
 
-    'encoder_loop: for encoder in encoders {
+    for encoder in encoders {
         emit_progress(
             &app,
             &request.job_id,
@@ -131,38 +125,17 @@ async fn compress_video(
             &encoder.name,
         );
 
-        let mut plan = request.plan.clone();
-        match run_ffmpeg_encode(&app, &request, &probe, &encoder.name, &plan, &output_paths).await {
-            Ok(mut attempt) => {
-                for _ in 0..2 {
-                    let Some(adjusted_plan) =
-                        create_size_adjusted_plan(&plan, request.target_bytes, attempt.output_size)
-                    else {
-                        break;
-                    };
-
-                    let _ = fs::remove_file(&output_paths.temp_output);
-                    plan = adjusted_plan;
-                    emit_progress(&app, &request.job_id, 0, "adjustingTarget", &encoder.name);
-                    match run_ffmpeg_encode(
-                        &app,
-                        &request,
-                        &probe,
-                        &encoder.name,
-                        &plan,
-                        &output_paths,
-                    )
-                    .await
-                    {
-                        Ok(result) => attempt = result,
-                        Err(error) => {
-                            let _ = fs::remove_file(&output_paths.temp_output);
-                            errors.push(format!("{} adjusted: {}", encoder.name, error));
-                            continue 'encoder_loop;
-                        }
-                    }
-                }
-
+        match run_ffmpeg_encode(
+            &app,
+            &request,
+            &probe,
+            &encoder.name,
+            &request.plan,
+            &output_paths,
+        )
+        .await
+        {
+            Ok(attempt) => {
                 if let Err(error) = publish_output(&output_paths) {
                     let _ = fs::remove_file(&output_paths.temp_output);
                     return Err(error);
@@ -475,35 +448,6 @@ fn publish_output(paths: &OutputPaths) -> Result<(), String> {
     Ok(())
 }
 
-fn create_size_adjusted_plan(
-    plan: &EncodePlan,
-    target_bytes: u64,
-    output_size: u64,
-) -> Option<EncodePlan> {
-    if target_bytes == 0 || output_size == 0 {
-        return None;
-    }
-
-    let ratio = target_bytes as f64 / output_size as f64;
-    if output_size > target_bytes && plan.video_kbps > MIN_VIDEO_KBPS + 10 {
-        let mut adjusted_plan = plan.clone();
-        adjusted_plan.video_kbps =
-            ((plan.video_kbps as f64 * ratio * SIZE_RETRY_TIGHTENING).floor() as u32)
-                .max(MIN_VIDEO_KBPS);
-        return Some(adjusted_plan);
-    }
-
-    if output_size < (target_bytes as f64 * SIZE_RETRY_LOWER_BOUND) as u64 && ratio > 1.0 {
-        let mut adjusted_plan = plan.clone();
-        adjusted_plan.video_kbps = ((plan.video_kbps as f64 * ratio * SIZE_RETRY_EXPANSION).floor()
-            as u32)
-            .max(plan.video_kbps + 1);
-        return Some(adjusted_plan);
-    }
-
-    None
-}
-
 fn job_path(output_path: &Path, job_id: &str, role: &str) -> PathBuf {
     let safe_job_id = sanitize_job_id(job_id);
     let stem = output_path
@@ -619,64 +563,6 @@ mod tests {
             .expect("system time should be after unix epoch")
             .as_nanos();
         env::temp_dir().join(format!("8disc-{name}-{now}"))
-    }
-
-    #[test]
-    fn size_adjusted_plan_reduces_video_bitrate_with_floor() {
-        let plan = EncodePlan {
-            video_kbps: 1000,
-            audio_kbps: 64,
-            width: Some(1280),
-            height: Some(720),
-        };
-
-        let adjusted = create_size_adjusted_plan(&plan, 500, 1000).expect("plan should tighten");
-
-        assert_eq!(adjusted.video_kbps, 480);
-        assert_eq!(adjusted.audio_kbps, plan.audio_kbps);
-        assert_eq!(adjusted.width, plan.width);
-        assert_eq!(adjusted.height, plan.height);
-    }
-
-    #[test]
-    fn size_adjusted_plan_keeps_video_bitrate_at_minimum() {
-        let plan = EncodePlan {
-            video_kbps: 91,
-            audio_kbps: 32,
-            width: None,
-            height: None,
-        };
-
-        let adjusted = create_size_adjusted_plan(&plan, 1, 1000).expect("plan should tighten");
-
-        assert_eq!(adjusted.video_kbps, 80);
-    }
-
-    #[test]
-    fn size_adjusted_plan_increases_video_bitrate_when_output_is_too_small() {
-        let plan = EncodePlan {
-            video_kbps: 1000,
-            audio_kbps: 64,
-            width: None,
-            height: None,
-        };
-
-        let adjusted = create_size_adjusted_plan(&plan, 1000, 900).expect("plan should expand");
-
-        assert_eq!(adjusted.video_kbps, 1088);
-        assert_eq!(adjusted.audio_kbps, plan.audio_kbps);
-    }
-
-    #[test]
-    fn size_adjusted_plan_is_not_created_when_output_is_close_to_target() {
-        let plan = EncodePlan {
-            video_kbps: 1000,
-            audio_kbps: 64,
-            width: None,
-            height: None,
-        };
-
-        assert!(create_size_adjusted_plan(&plan, 1000, 950).is_none());
     }
 
     #[test]

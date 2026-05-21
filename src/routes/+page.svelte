@@ -131,7 +131,6 @@
         usingGpuEncoder: 'Using GPU encoder',
         usingCpuFallback: 'Using CPU fallback',
         compressingLocal: 'Compressing locally',
-        adjustingTarget: 'Tuning for the target',
         fileReady: 'File ready',
         fileReadyOversized: 'File ready, above target',
         compressionFailed: 'Compression failed'
@@ -200,7 +199,6 @@
         usingGpuEncoder: 'Usando encoder da GPU',
         usingCpuFallback: 'Usando fallback na CPU',
         compressingLocal: 'Comprimindo localmente',
-        adjustingTarget: 'Ajustando para a meta',
         fileReady: 'Arquivo pronto',
         fileReadyOversized: 'Arquivo pronto, acima da meta',
         compressionFailed: 'Falha na compressao'
@@ -246,9 +244,6 @@
   const MAX_INPUT_BYTES = 2 * 1024 * MB;
   const IOS_MAX_INPUT_BYTES = 180 * MB;
   const TARGET_BITRATE_UTILIZATION = 0.97;
-  const SIZE_RETRY_LOWER_BOUND = 0.94;
-  const SIZE_RETRY_TIGHTENING = 0.96;
-  const SIZE_RETRY_EXPANSION = 0.98;
   const MIN_VIDEO_KBPS = 80;
   const MOBILE_MAX_VIDEO_KBPS = 6000;
   const MIN_VALID_MP4_BYTES = 1024;
@@ -638,35 +633,16 @@
 
       const info = videoInfo ?? (await readVideoInfo(videoFile));
       inputName = `input.${getExtension(videoFile.name)}`;
-      const basePlan = createEncodePlan(info, jobTarget, webProfile);
+      const plan = createEncodePlan(info, jobTarget, webProfile);
 
       await safeDelete(encoder, inputName);
       await safeDelete(encoder, outputName);
       await encoder.writeFile(inputName, await helper(videoFile));
 
       statusKey = 'compressingLocal';
-      let activePlan = basePlan;
-      let resultBlob = createVideoBlob(
-        await runEncode(encoder, inputName, outputName, activePlan, webProfile)
+      const resultBlob = createVideoBlob(
+        await runEncode(encoder, inputName, outputName, plan, webProfile)
       );
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const adjustedPlan = createSizeAdjustedPlan(
-          activePlan,
-          jobTargetBytes,
-          resultBlob.size,
-          webProfile
-        );
-        if (!adjustedPlan) {
-          break;
-        }
-
-        activePlan = adjustedPlan;
-        statusKey = 'adjustingTarget';
-        resultBlob = createVideoBlob(
-          await runEncode(encoder, inputName, outputName, activePlan, webProfile)
-        );
-      }
 
       compressedUrl = URL.createObjectURL(resultBlob);
       compressedSize = resultBlob.size;
@@ -747,8 +723,7 @@
           jobId,
           inputPath: video.path,
           outputPath,
-          plan,
-          targetBytes: jobTargetBytes
+          plan
         }
       });
 
@@ -1059,45 +1034,6 @@
       width: scale?.width ?? null,
       height: scale?.height ?? null
     };
-  }
-
-  function createSizeAdjustedPlan(
-    plan: EncodePlan,
-    targetByteSize: number,
-    outputByteSize: number,
-    profile?: WebEncodeProfile
-  ): EncodePlan | null {
-    if (targetByteSize <= 0 || outputByteSize <= 0) {
-      return null;
-    }
-
-    const ratio = targetByteSize / outputByteSize;
-    if (outputByteSize > targetByteSize && plan.videoKbps > MIN_VIDEO_KBPS + 10) {
-      return {
-        ...plan,
-        videoKbps: Math.max(
-          MIN_VIDEO_KBPS,
-          Math.floor(plan.videoKbps * ratio * SIZE_RETRY_TIGHTENING)
-        )
-      };
-    }
-
-    if (outputByteSize < targetByteSize * SIZE_RETRY_LOWER_BOUND && ratio > 1) {
-      const maxVideoKbps = profile?.maxVideoKbps ?? Number.POSITIVE_INFINITY;
-      const expandedVideoKbps = Math.floor(plan.videoKbps * ratio * SIZE_RETRY_EXPANSION);
-      const videoKbps = Math.min(maxVideoKbps, Math.max(plan.videoKbps + 1, expandedVideoKbps));
-
-      if (videoKbps <= plan.videoKbps) {
-        return null;
-      }
-
-      return {
-        ...plan,
-        videoKbps
-      };
-    }
-
-    return null;
   }
 
   function chooseScale(info: VideoInfo, videoKbps: number, maxLongEdge?: number) {
