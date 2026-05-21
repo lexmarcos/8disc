@@ -332,7 +332,9 @@
   const MIN_VIDEO_KBPS = 80;
   const MOBILE_MAX_VIDEO_KBPS = 6000;
   const MIN_VALID_MP4_BYTES = 1024;
-  const FFMPEG_LOAD_TIMEOUT_MS = 20_000;
+  const FFMPEG_LOAD_TIMEOUT_MS = 30_000;
+  const MOBILE_FFMPEG_LOAD_TIMEOUT_MS = 90_000;
+  const IOS_FFMPEG_LOAD_TIMEOUT_MS = 120_000;
   const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
   const resizeHandles: ResizeHandle[] = [
     { direction: 'North', className: 'absolute inset-x-3 top-0 z-40 h-1 cursor-n-resize' },
@@ -976,7 +978,7 @@
 
   async function loadFfmpegInstance(instance: FFmpegInstance, coreConfig: FfmpegLoadConfig) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), FFMPEG_LOAD_TIMEOUT_MS);
+    const timeoutId = window.setTimeout(() => controller.abort(), getFfmpegLoadTimeoutMs());
 
     try {
       await instance.load(coreConfig, { signal: controller.signal });
@@ -998,6 +1000,12 @@
       !isMobileLikeDevice() &&
       globalThis.crossOriginIsolated === true
     );
+  }
+
+  function getFfmpegLoadTimeoutMs() {
+    if (isIOSLikeDevice()) return IOS_FFMPEG_LOAD_TIMEOUT_MS;
+    if (isMobileLikeDevice()) return MOBILE_FFMPEG_LOAD_TIMEOUT_MS;
+    return FFMPEG_LOAD_TIMEOUT_MS;
   }
 
   function createWebEncodeProfile(): WebEncodeProfile {
