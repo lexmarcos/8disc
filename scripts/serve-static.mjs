@@ -110,12 +110,17 @@ function isPublicShareAsset(filePath) {
 }
 
 function getSecurityHeaders(filePath) {
-  if (isHtmlFile(filePath)) {
-    return crossOriginIsolationHeaders;
-  }
-
   if (isPublicShareAsset(filePath)) {
     return publicShareAssetHeaders;
+  }
+
+  const relativePath = getRelativeFilePath(filePath);
+
+  if (isHtmlFile(filePath) || relativePath.startsWith('_app/immutable/')) {
+    return {
+      ...crossOriginIsolationHeaders,
+      ...sameOriginResourceHeaders
+    };
   }
 
   return sameOriginResourceHeaders;
