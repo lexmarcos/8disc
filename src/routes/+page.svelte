@@ -1732,7 +1732,7 @@
 
       {#if isAdvancedMode}
         <section
-          class="grid w-full max-w-2xl gap-3 border border-[#fbfbff]/35 bg-[#1410bd]/50 p-4"
+          class="advanced-settings grid w-full max-w-2xl gap-3 border border-[#fbfbff]/35 bg-[#1410bd]/50 p-4"
           aria-label={text.advanced.settings}
         >
           <div class="flex items-center justify-between gap-3">
@@ -1751,7 +1751,7 @@
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.target}
               <input
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-base font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
                 type="number"
                 min="1"
                 max="2000"
@@ -1764,7 +1764,7 @@
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.outputName}
               <input
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none placeholder:text-[#d8d7ff]/55 focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none placeholder:text-[#d8d7ff]/55 focus:border-[#fbfbff] disabled:opacity-60"
                 type="text"
                 placeholder={text.advanced.outputPlaceholder}
                 bind:value={advancedOutputName}
@@ -1777,7 +1777,7 @@
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.webEngine}
               <select
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
                 bind:value={advancedFfmpegCore}
                 disabled={isLoadingEngine || isCompressing || isDesktop}
               >
@@ -1790,7 +1790,7 @@
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.preset}
               <select
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
                 bind:value={advancedPreset}
                 disabled={isLoadingEngine || isCompressing}
               >
@@ -1803,7 +1803,7 @@
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.profile}
               <select
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
                 bind:value={advancedH264Profile}
                 disabled={isLoadingEngine || isCompressing}
               >
@@ -1814,11 +1814,11 @@
             </label>
           </div>
 
-          <div class="grid gap-3 sm:grid-cols-4">
+          <div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.videoKbps}
               <input
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
                 type="number"
                 min="0"
                 step="100"
@@ -1830,7 +1830,7 @@
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.audioKbps}
               <input
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
                 type="number"
                 min="16"
                 step="16"
@@ -1842,7 +1842,7 @@
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.maxEdge}
               <input
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
                 type="number"
                 min="0"
                 step="2"
@@ -1854,7 +1854,7 @@
             <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
               {text.advanced.threads}
               <input
-                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                class="adv-input min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
                 type="number"
                 min="0"
                 step="1"
@@ -1864,13 +1864,15 @@
             </label>
           </div>
 
-          <div class="flex flex-wrap gap-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
-            <label class="flex min-h-10 items-center gap-2 border border-[#fbfbff]/25 px-3">
-              <input type="checkbox" bind:checked={advancedFastStart} disabled={isLoadingEngine || isCompressing} />
+          <div class="flex flex-wrap gap-4 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+            <label class="toggle-label">
+              <input type="checkbox" class="sr-only peer" bind:checked={advancedFastStart} disabled={isLoadingEngine || isCompressing} />
+              <span class="toggle-track"></span>
               {text.advanced.fastStart}
             </label>
-            <label class="flex min-h-10 items-center gap-2 border border-[#fbfbff]/25 px-3">
-              <input type="checkbox" bind:checked={advancedStripMetadata} disabled={isLoadingEngine || isCompressing} />
+            <label class="toggle-label">
+              <input type="checkbox" class="sr-only peer" bind:checked={advancedStripMetadata} disabled={isLoadingEngine || isCompressing} />
+              <span class="toggle-track"></span>
               {text.advanced.stripMetadata}
             </label>
           </div>
@@ -2021,3 +2023,95 @@
     </footer>
   </div>
 </main>
+
+<style>
+  .advanced-settings label {
+    min-width: 0;
+  }
+
+  .adv-input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 2.75rem;
+    min-height: 2.75rem;
+    border-radius: 0;
+  }
+
+  select.adv-input {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2.5rem;
+    line-height: 1.25;
+    background-image:
+      linear-gradient(45deg, transparent 50%, #fbfbff 50%),
+      linear-gradient(135deg, #fbfbff 50%, transparent 50%);
+    background-position:
+      calc(100% - 1.05rem) 50%,
+      calc(100% - 0.7rem) 50%;
+    background-repeat: no-repeat;
+    background-size:
+      0.35rem 0.35rem,
+      0.35rem 0.35rem;
+  }
+
+  .adv-input::-webkit-inner-spin-button,
+  .adv-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .adv-input[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  .toggle-label {
+    display: flex;
+    min-height: 2.5rem;
+    align-items: center;
+    gap: 0.625rem;
+    cursor: pointer;
+  }
+  .toggle-track {
+    position: relative;
+    display: inline-block;
+    width: 3rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-radius: 9999px;
+    border: 2px solid rgba(251, 251, 255, 0.35);
+    background: transparent;
+    transition: background-color 150ms, border-color 150ms;
+  }
+  .toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    background: rgba(216, 215, 255, 0.6);
+    transition: transform 150ms, background-color 150ms;
+  }
+  .peer:checked ~ .toggle-track {
+    background-color: #fbfbff;
+    border-color: #fbfbff;
+  }
+  .peer:checked ~ .toggle-track::after {
+    transform: translateX(1.5rem);
+    background-color: #1713c8;
+  }
+  .peer:focus-visible ~ .toggle-track {
+    outline: 2px solid #fbfbff;
+    outline-offset: 2px;
+  }
+  .peer:disabled ~ .toggle-track {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .peer:disabled ~ .toggle-label {
+    cursor: not-allowed;
+  }
+</style>
