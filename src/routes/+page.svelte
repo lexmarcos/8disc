@@ -225,7 +225,7 @@
       downloadMenuLabel: 'Downloads do app',
       downloadWindows: 'Windows',
       downloadLinux: 'Linux',
-      advancedMode: 'Avancado',
+      advancedMode: 'Avançado',
       simpleMode: 'Simples',
       eyebrow: 'compressor local',
       headline: 'Comprima para caber no Discord',
@@ -238,7 +238,7 @@
       compressing: 'Comprimindo',
       download: 'Baixar',
       advanced: {
-        settings: 'Configuracoes avancadas',
+        settings: 'Configurações avançadas',
         target: 'Meta',
         outputName: 'Nome do arquivo',
         outputPlaceholder: 'automatico pelo video',
