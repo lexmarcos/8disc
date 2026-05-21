@@ -1740,7 +1740,7 @@
               {text.advanced.settings}
             </h2>
             <a
-              class="grid min-h-9 place-items-center border border-[#fbfbff]/35 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+              class="grid min-h-9 place-items-center border border-[#fbfbff] bg-[#fbfbff] px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#1713c8] transition hover:translate-y-[-1px] hover:shadow-[6px_6px_0_rgba(255,255,255,.16)] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
               href={modeHref}
             >
               {text.simpleMode}
