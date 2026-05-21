@@ -222,8 +222,10 @@
   type ErrorKey = keyof (typeof translations)['en']['errors'];
   type Translation = (typeof translations)[Locale];
 
-  export let initialLocale: Locale = 'en';
-  export let canonicalPath = '/';
+  let {
+    initialLocale = 'en',
+    canonicalPath = '/'
+  }: { initialLocale?: Locale; canonicalPath?: string } = $props();
 
   const targetSizes = [8, 16, 25, 50, 100] as const;
   const languageOptions = [
@@ -267,72 +269,78 @@
     { longEdge: 854, minVideoKbps: 700 }
   ] as const;
 
-  let locale: Locale = initialLocale;
-  let selectedTarget: TargetSize = 8;
-  let isDesktop = isTauriRuntime();
-  let videoFile: File | null = null;
-  let desktopVideo: DesktopVideo | null = null;
-  let videoInfo: VideoInfo | null = null;
-  let fileInput: HTMLInputElement;
+  let selectedLocale = $state<Locale | null>(null);
+  let locale = $derived(selectedLocale ?? initialLocale);
+  let selectedTarget = $state<TargetSize>(8);
+  let isDesktop = $state(isTauriRuntime());
+  let videoFile = $state<File | null>(null);
+  let desktopVideo = $state<DesktopVideo | null>(null);
+  let videoInfo = $state<VideoInfo | null>(null);
+  let fileInput = $state<HTMLInputElement | undefined>();
   let ffmpeg: FFmpegInstance | null = null;
   let fetchFile: FetchFile | null = null;
 
-  let isDragging = false;
-  let isLoadingEngine = false;
-  let isCompressing = false;
-  let compressionRequestLocked = false;
-  let progress = 0;
-  let engineLoadProgress = 0;
+  let isDragging = $state(false);
+  let isLoadingEngine = $state(false);
+  let isCompressing = $state(false);
+  let compressionRequestLocked = $state(false);
+  let progress = $state(0);
+  let engineLoadProgress = $state(0);
   let engineLoadTimer: number | null = null;
-  let statusKey: StatusKey = 'chooseVideo';
-  let errorKey: ErrorKey | '' = '';
-  let compressedUrl = '';
-  let compressedName = 'compressed-video.mp4';
-  let compressedSize = 0;
-  let desktopOutputPath = '';
-  let activeEncoder = '';
-  let errorDetail = '';
-  let ffmpegLogLines: string[] = [];
-  let downloadMenuOpen = false;
-  let downloadMenuElement: HTMLDivElement;
-  let desktopDownloadOptions: DesktopDownloadOption[] = defaultDesktopDownloadOptions;
+  let statusKey = $state<StatusKey>('chooseVideo');
+  let errorKey = $state<ErrorKey | ''>('');
+  let compressedUrl = $state('');
+  let compressedName = $state('compressed-video.mp4');
+  let compressedSize = $state(0);
+  let desktopOutputPath = $state('');
+  let activeEncoder = $state('');
+  let errorDetail = $state('');
+  let ffmpegLogLines = $state<string[]>([]);
+  let downloadMenuOpen = $state(false);
+  let downloadMenuElement = $state<HTMLDivElement | undefined>();
+  let desktopDownloadOptions = $state<DesktopDownloadOption[]>(defaultDesktopDownloadOptions);
   let notificationAudioContext: AudioContext | null = null;
 
-  $: text = translations[locale];
-  $: pageUrl = absoluteUrl(canonicalPath);
-  $: ogImageUrl = absoluteUrl(ogImagePath);
-  $: structuredData = createStructuredData(text, pageUrl, ogImageUrl);
-  $: selectedVideoName = desktopVideo?.name ?? videoFile?.name ?? '';
-  $: selectedVideoSize = desktopVideo?.size ?? videoFile?.size ?? 0;
-  $: hasSelectedVideo = Boolean(desktopVideo || videoFile);
-  $: targetBytes = selectedTarget * MB;
-  $: isVideoAtOrBelowTarget =
-    hasSelectedVideo && selectedVideoSize > 0 && selectedVideoSize <= targetBytes;
-  $: canCompress =
+  let text = $derived(translations[locale]);
+  let pageUrl = $derived(absoluteUrl(canonicalPath));
+  let ogImageUrl = $derived(absoluteUrl(ogImagePath));
+  let structuredData = $derived(createStructuredData(text, pageUrl, ogImageUrl));
+  let selectedVideoName = $derived(desktopVideo?.name ?? videoFile?.name ?? '');
+  let selectedVideoSize = $derived(desktopVideo?.size ?? videoFile?.size ?? 0);
+  let hasSelectedVideo = $derived(Boolean(desktopVideo || videoFile));
+  let targetBytes = $derived(selectedTarget * MB);
+  let isVideoAtOrBelowTarget = $derived(
+    hasSelectedVideo && selectedVideoSize > 0 && selectedVideoSize <= targetBytes
+  );
+  let canCompress = $derived(
     hasSelectedVideo &&
     !isVideoAtOrBelowTarget &&
     !errorKey &&
     !isLoadingEngine &&
     !isCompressing &&
-    !compressionRequestLocked;
-  $: inputSize = selectedVideoSize ? formatBytes(selectedVideoSize) : '';
-  $: outputSize = compressedSize ? formatBytes(compressedSize) : '';
-  $: engineLabel =
+    !compressionRequestLocked
+  );
+  let inputSize = $derived(selectedVideoSize ? formatBytes(selectedVideoSize) : '');
+  let outputSize = $derived(compressedSize ? formatBytes(compressedSize) : '');
+  let engineLabel = $derived(
     isLoadingEngine
       ? text.loadingProgress(engineLoadProgress)
       : isCompressing && progress > 0
         ? text.progress(progress)
-        : text.status[statusKey];
-  $: engineDetail = activeEncoder ? `${engineLabel} / ${activeEncoder}` : engineLabel;
-  $: progressBarValue = isLoadingEngine
+        : text.status[statusKey]
+  );
+  let engineDetail = $derived(activeEncoder ? `${engineLabel} / ${activeEncoder}` : engineLabel);
+  let progressBarValue = $derived(isLoadingEngine
     ? engineLoadProgress
     : isCompressing || progress === 100
       ? progress
-      : 0;
-  $: progressRightLabel = isLoadingEngine
+      : 0
+  );
+  let progressRightLabel = $derived(isLoadingEngine
     ? `${engineLoadProgress}%`
-    : `${selectedTarget} ${text.megabytes}`;
-  $: errorText = errorKey ? text.errors[errorKey] : '';
+    : `${selectedTarget} ${text.megabytes}`
+  );
+  let errorText = $derived(errorKey ? text.errors[errorKey] : '');
 
   onMount(() => {
     isDesktop = isTauriRuntime();
@@ -398,7 +406,7 @@
   }
 
   function applyLocale(nextLocale: Locale) {
-    locale = nextLocale;
+    selectedLocale = nextLocale;
 
     if (browser) {
       document.documentElement.lang = translations[nextLocale].htmlLang;
