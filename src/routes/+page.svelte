@@ -38,6 +38,7 @@
   };
   type WebEncodeProfile = {
     isIOS: boolean;
+    isMobile: boolean;
     maxLongEdge: number;
     maxVideoKbps: number;
     preset: 'ultrafast' | 'veryfast';
@@ -849,22 +850,24 @@
     return (
       browser &&
       typeof SharedArrayBuffer !== 'undefined' &&
-      !isIOSLikeDevice() &&
+      !isMobileLikeDevice() &&
       globalThis.crossOriginIsolated === true
     );
   }
 
   function createWebEncodeProfile(): WebEncodeProfile {
     const isIOS = isIOSLikeDevice();
+    const isMobile = isMobileLikeDevice();
 
     return {
       isIOS,
-      maxLongEdge: isIOS ? 854 : 1920,
-      maxVideoKbps: isIOS ? 1400 : 12000,
-      preset: isIOS ? 'ultrafast' : 'veryfast',
-      threads: isIOS ? 1 : null,
-      useFastStart: !isIOS,
-      videoProfile: isIOS ? 'baseline' : null
+      isMobile,
+      maxLongEdge: isMobile ? 854 : 1920,
+      maxVideoKbps: isMobile ? 1400 : 12000,
+      preset: isMobile ? 'ultrafast' : 'veryfast',
+      threads: isMobile ? 1 : null,
+      useFastStart: !isMobile,
+      videoProfile: isMobile ? 'baseline' : null
     };
   }
 
@@ -874,6 +877,16 @@
     return (
       /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+  }
+
+  function isMobileLikeDevice() {
+    if (!browser) return false;
+
+    return (
+      isIOSLikeDevice() ||
+      /Android|Mobile|Tablet/.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 1 && window.innerWidth < 900)
     );
   }
 
