@@ -40,11 +40,13 @@
 
 html {
   min-height: 100%;
+  background: #1713c8;
 }
 
 body {
   min-height: 100%;
   margin: 0;
+  background: #1713c8;
 }
 
 button,
