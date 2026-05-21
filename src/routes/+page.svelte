@@ -18,7 +18,14 @@
   import { onDestroy, onMount } from 'svelte';
   import type { FFmpeg as FFmpegInstance } from '@ffmpeg/ffmpeg';
 
+  type PageMode = 'standard' | 'advanced';
   type TargetSize = 8 | 16 | 25 | 50 | 100;
+  type FfmpegCorePreference = 'auto' | 'single' | 'multi';
+  type LoadedFfmpegCore = 'single' | 'multi';
+  type H264Preset = 'ultrafast' | 'superfast' | 'veryfast' | 'faster' | 'fast' | 'medium';
+  type H264Profile = 'auto' | 'baseline' | 'main' | 'high';
+  type H264VideoProfile = Exclude<H264Profile, 'auto'>;
+  type PixelFormat = 'yuv420p' | 'yuv444p';
   type FetchFile = (source: string | File | Blob) => Promise<Uint8Array>;
   type VideoInfo = {
     duration: number;
@@ -35,16 +42,45 @@
     audioKbps: number;
     width: number | null;
     height: number | null;
+    preset?: H264Preset | null;
+    threads?: number | null;
+    useFastStart?: boolean;
+    videoProfile?: H264VideoProfile | null;
+    h264Level?: string | null;
+    stripMetadata?: boolean;
+    audioChannels?: number;
+    audioSampleRate?: number;
+    pixelFormat?: PixelFormat;
   };
-  type WebEncodeProfile = {
+  type EncodeProfile = {
+    maxLongEdge?: number;
+    maxVideoKbps?: number;
+    videoKbps?: number | null;
+    audioKbps?: number;
+    preset?: H264Preset;
+    threads?: number | null;
+    useFastStart?: boolean;
+    videoProfile?: H264VideoProfile | null;
+    h264Level?: string | null;
+    stripMetadata?: boolean;
+    audioChannels?: number;
+    audioSampleRate?: number;
+    pixelFormat?: PixelFormat;
+  };
+  type WebEncodeProfile = EncodeProfile & {
     isIOS: boolean;
     isMobile: boolean;
     maxLongEdge: number;
     maxVideoKbps: number;
-    preset: 'ultrafast' | 'veryfast';
+    preset: H264Preset;
     threads: number | null;
     useFastStart: boolean;
-    videoProfile: 'baseline' | null;
+    videoProfile: H264VideoProfile | null;
+    h264Level: string | null;
+    stripMetadata: boolean;
+    audioChannels: number;
+    audioSampleRate: number;
+    pixelFormat: PixelFormat;
   };
   type FfmpegLoadConfig = {
     coreURL: string;
@@ -100,6 +136,8 @@
       downloadMenuLabel: 'App downloads',
       downloadWindows: 'Windows',
       downloadLinux: 'Linux',
+      advancedMode: 'Advanced',
+      simpleMode: 'Simple',
       eyebrow: 'local compressor',
       headline: 'Compress to fit on Discord',
       uploadAria: 'Video upload',
@@ -110,6 +148,25 @@
       compress: 'Compress',
       compressing: 'Compressing',
       download: 'Download',
+      advanced: {
+        settings: 'Advanced settings',
+        target: 'Target',
+        outputName: 'Output name',
+        outputPlaceholder: 'auto from input',
+        webEngine: 'Web FFmpeg',
+        engineAuto: 'Auto',
+        engineSingle: 'WASM',
+        engineMulti: 'WASM MT',
+        preset: 'Preset',
+        profile: 'Profile',
+        auto: 'Auto',
+        videoKbps: 'Video kbps',
+        audioKbps: 'Audio kbps',
+        maxEdge: 'Max edge',
+        threads: 'Threads',
+        fastStart: 'Fast start',
+        stripMetadata: 'Strip metadata'
+      },
       alreadyBelowTarget: (target: number) =>
         `This video is already smaller than ${target} MB, so it cannot be compressed for this target. Choose a smaller target.`,
       createdBy: 'Created by Markzuel',
@@ -168,6 +225,8 @@
       downloadMenuLabel: 'Downloads do app',
       downloadWindows: 'Windows',
       downloadLinux: 'Linux',
+      advancedMode: 'Avancado',
+      simpleMode: 'Simples',
       eyebrow: 'compressor local',
       headline: 'Comprima para caber no Discord',
       uploadAria: 'Upload de video',
@@ -178,6 +237,25 @@
       compress: 'Comprimir',
       compressing: 'Comprimindo',
       download: 'Baixar',
+      advanced: {
+        settings: 'Configuracoes avancadas',
+        target: 'Meta',
+        outputName: 'Nome do arquivo',
+        outputPlaceholder: 'automatico pelo video',
+        webEngine: 'FFmpeg web',
+        engineAuto: 'Auto',
+        engineSingle: 'WASM',
+        engineMulti: 'WASM MT',
+        preset: 'Preset',
+        profile: 'Profile',
+        auto: 'Auto',
+        videoKbps: 'Video kbps',
+        audioKbps: 'Audio kbps',
+        maxEdge: 'Lado maximo',
+        threads: 'Threads',
+        fastStart: 'Fast start',
+        stripMetadata: 'Remover metadados'
+      },
       alreadyBelowTarget: (target: number) =>
         `Este video ja esta menor que ${target} MB, entao nao e possivel comprimir para esse alvo. Escolha um alvo menor.`,
       createdBy: 'Criado por Markzuel',
@@ -224,18 +302,23 @@
 
   let {
     initialLocale = 'en',
-    canonicalPath = '/'
-  }: { initialLocale?: Locale; canonicalPath?: string } = $props();
+    canonicalPath = '/',
+    mode = 'standard'
+  }: { initialLocale?: Locale; canonicalPath?: string; mode?: PageMode } = $props();
 
   const targetSizes = [8, 16, 25, 50, 100] as const;
-  const languageOptions = [
+  const standardLanguageOptions = [
     { code: 'en', label: 'EN', href: '/', hreflang: 'en' },
     { code: 'pt', label: 'PT', href: '/pt/', hreflang: 'pt-BR' }
   ] as const;
-  const alternateLinks = [
-    ...localizedPages.map(({ hreflang, path }) => ({ hreflang, href: absoluteUrl(path) })),
-    { hreflang: 'x-default', href: absoluteUrl(xDefaultPath) }
-  ];
+  const advancedLanguageOptions = [
+    { code: 'en', label: 'EN', href: '/advanced/', hreflang: 'en' },
+    { code: 'pt', label: 'PT', href: '/pt/advanced/', hreflang: 'pt-BR' }
+  ] as const;
+  const advancedLocalizedPages = [
+    { locale: 'en', hreflang: 'en', path: '/advanced/', label: 'English' },
+    { locale: 'pt', hreflang: 'pt-BR', path: '/pt/advanced/', label: 'Portugues' }
+  ] as const;
   const sameAsLinks = [
     'https://github.com/lexmarcos',
     'https://www.instagram.com/markzuel/',
@@ -268,10 +351,23 @@
     { longEdge: 1280, minVideoKbps: 1400 },
     { longEdge: 854, minVideoKbps: 700 }
   ] as const;
+  const presetOptions: H264Preset[] = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium'];
+  const profileOptions: H264Profile[] = ['auto', 'baseline', 'main', 'high'];
 
   let selectedLocale = $state<Locale | null>(null);
   let locale = $derived(selectedLocale ?? initialLocale);
   let selectedTarget = $state<TargetSize>(8);
+  let advancedTargetMb = $state(8);
+  let advancedOutputName = $state('');
+  let advancedFfmpegCore = $state<FfmpegCorePreference>('auto');
+  let advancedPreset = $state<H264Preset>('veryfast');
+  let advancedH264Profile = $state<H264Profile>('auto');
+  let advancedVideoKbps = $state(0);
+  let advancedAudioKbps = $state(64);
+  let advancedMaxLongEdge = $state(0);
+  let advancedThreads = $state(0);
+  let advancedFastStart = $state(true);
+  let advancedStripMetadata = $state(true);
   let isDesktop = $state(isTauriRuntime());
   let videoFile = $state<File | null>(null);
   let desktopVideo = $state<DesktopVideo | null>(null);
@@ -279,6 +375,7 @@
   let fileInput = $state<HTMLInputElement | undefined>();
   let ffmpeg: FFmpegInstance | null = null;
   let fetchFile: FetchFile | null = null;
+  let loadedFfmpegCore: LoadedFfmpegCore | null = null;
 
   let isDragging = $state(false);
   let isLoadingEngine = $state(false);
@@ -302,13 +399,25 @@
   let notificationAudioContext: AudioContext | null = null;
 
   let text = $derived(translations[locale]);
+  let isAdvancedMode = $derived(mode === 'advanced');
+  let languageOptions = $derived(isAdvancedMode ? advancedLanguageOptions : standardLanguageOptions);
+  let currentLocalizedPages = $derived(isAdvancedMode ? advancedLocalizedPages : localizedPages);
+  let currentXDefaultPath = $derived(isAdvancedMode ? '/advanced/' : xDefaultPath);
+  let alternateLinks = $derived([
+    ...currentLocalizedPages.map(({ hreflang, path }) => ({ hreflang, href: absoluteUrl(path) })),
+    { hreflang: 'x-default', href: absoluteUrl(currentXDefaultPath) }
+  ]);
+  let modeHref = $derived(
+    isAdvancedMode ? (locale === 'pt' ? '/pt/' : '/') : locale === 'pt' ? '/pt/advanced/' : '/advanced/'
+  );
   let pageUrl = $derived(absoluteUrl(canonicalPath));
   let ogImageUrl = $derived(absoluteUrl(ogImagePath));
   let structuredData = $derived(createStructuredData(text, pageUrl, ogImageUrl));
   let selectedVideoName = $derived(desktopVideo?.name ?? videoFile?.name ?? '');
   let selectedVideoSize = $derived(desktopVideo?.size ?? videoFile?.size ?? 0);
   let hasSelectedVideo = $derived(Boolean(desktopVideo || videoFile));
-  let targetBytes = $derived(selectedTarget * MB);
+  let effectiveTargetMb = $derived(isAdvancedMode ? normalizeTargetMb(advancedTargetMb) : selectedTarget);
+  let targetBytes = $derived(effectiveTargetMb * MB);
   let isVideoAtOrBelowTarget = $derived(
     hasSelectedVideo && selectedVideoSize > 0 && selectedVideoSize <= targetBytes
   );
@@ -338,7 +447,7 @@
   );
   let progressRightLabel = $derived(isLoadingEngine
     ? `${engineLoadProgress}%`
-    : `${selectedTarget} ${text.megabytes}`
+    : `${formatTargetValue(effectiveTargetMb)} ${text.megabytes}`
   );
   let errorText = $derived(errorKey ? text.errors[errorKey] : '');
 
@@ -624,7 +733,7 @@
     }
 
     const jobFile = videoFile;
-    const jobTarget = selectedTarget;
+    const jobTarget = effectiveTargetMb;
     const jobTargetBytes = jobTarget * MB;
     let cleanupEncoder: FFmpegInstance | null = null;
     let inputName = '';
@@ -673,7 +782,7 @@
 
       compressedUrl = URL.createObjectURL(resultBlob);
       compressedSize = resultBlob.size;
-      compressedName = `${withoutExtension(jobFile.name)}-${jobTarget}mb.mp4`;
+      compressedName = getOutputFileName(jobFile.name, jobTarget);
       progress = 100;
       statusKey = resultBlob.size <= jobTargetBytes ? 'fileReady' : 'fileReadyOversized';
       playCompletionSound();
@@ -699,7 +808,7 @@
   }
 
   async function compressDesktopVideo(video: DesktopVideo) {
-    const jobTarget = selectedTarget;
+    const jobTarget = effectiveTargetMb;
     const jobTargetBytes = jobTarget * MB;
 
     errorKey = '';
@@ -718,7 +827,7 @@
         import('@tauri-apps/plugin-dialog')
       ]);
       const outputPath = await save({
-        defaultPath: `${withoutExtension(video.name)}-${jobTarget}mb.mp4`,
+        defaultPath: getOutputFileName(video.name, jobTarget),
         filters: [{ name: 'MP4 video', extensions: ['mp4'] }]
       });
 
@@ -745,7 +854,7 @@
         }
       );
 
-      const plan = createEncodePlan(video, jobTarget);
+      const plan = createEncodePlan(video, jobTarget, isAdvancedMode ? createAdvancedEncodeProfile() : undefined);
       const result = await invoke<DesktopCompressionResult>('compress_video', {
         request: {
           jobId,
@@ -773,9 +882,18 @@
   }
 
   async function loadEncoder() {
-    if (ffmpeg && fetchFile) {
+    const corePreference = isAdvancedMode ? advancedFfmpegCore : 'auto';
+
+    if (ffmpeg && fetchFile && loadedFfmpegCore && isLoadedCoreAllowed(loadedFfmpegCore, corePreference)) {
       engineLoadProgress = 100;
       return ffmpeg;
+    }
+
+    if (ffmpeg) {
+      ffmpeg.terminate();
+      ffmpeg = null;
+      fetchFile = null;
+      loadedFfmpegCore = null;
     }
 
     setEngineLoadProgress(8);
@@ -784,12 +902,7 @@
       import('@ffmpeg/util')
     ]);
     setEngineLoadProgress(18);
-    const coreConfigs = supportsMultithreadEncoder()
-      ? [
-          { label: 'wasm mt', config: await loadMultithreadCore() },
-          { label: 'wasm', config: await loadSingleThreadCore() }
-        ]
-      : [{ label: 'wasm', config: await loadSingleThreadCore() }];
+    const coreConfigs = await resolveFfmpegCoreConfigs(corePreference);
     setEngineLoadProgress(32);
 
     let lastError: unknown;
@@ -806,6 +919,7 @@
         stopEngineLoadProgress(100);
         ffmpeg = instance;
         fetchFile = util.fetchFile as FetchFile;
+        loadedFfmpegCore = label === 'wasm mt' ? 'multi' : 'single';
         return instance;
       } catch (error) {
         lastError = error;
@@ -815,6 +929,33 @@
     }
 
     throw lastError ?? new Error('ffmpeg-load-failed');
+  }
+
+  function isLoadedCoreAllowed(core: LoadedFfmpegCore, preference: FfmpegCorePreference) {
+    if (preference === 'single') return core === 'single';
+    if (preference === 'multi') return core === 'multi' || !supportsMultithreadEncoder();
+    return true;
+  }
+
+  async function resolveFfmpegCoreConfigs(preference: FfmpegCorePreference) {
+    const canUseMultithread = supportsMultithreadEncoder();
+
+    if (preference === 'single') {
+      return [{ label: 'wasm', config: await loadSingleThreadCore() }];
+    }
+
+    if (preference === 'multi' && canUseMultithread) {
+      return [{ label: 'wasm mt', config: await loadMultithreadCore() }];
+    }
+
+    if (canUseMultithread) {
+      return [
+        { label: 'wasm mt', config: await loadMultithreadCore() },
+        { label: 'wasm', config: await loadSingleThreadCore() }
+      ];
+    }
+
+    return [{ label: 'wasm', config: await loadSingleThreadCore() }];
   }
 
   function createFfmpegInstance(FFmpeg: FFmpegConstructor) {
@@ -862,16 +1003,46 @@
   function createWebEncodeProfile(): WebEncodeProfile {
     const isIOS = isIOSLikeDevice();
     const isMobile = isMobileLikeDevice();
+    const advancedProfile = isAdvancedMode ? createAdvancedEncodeProfile() : null;
 
     return {
       isIOS,
       isMobile,
-      maxLongEdge: isMobile ? 854 : 1920,
-      maxVideoKbps: isMobile ? MOBILE_MAX_VIDEO_KBPS : 12000,
-      preset: isMobile ? 'ultrafast' : 'veryfast',
-      threads: isMobile ? 1 : null,
-      useFastStart: !isMobile,
-      videoProfile: isMobile ? 'baseline' : null
+      maxLongEdge: advancedProfile?.maxLongEdge ?? (isMobile ? 854 : 1920),
+      maxVideoKbps: advancedProfile?.maxVideoKbps ?? (isMobile ? MOBILE_MAX_VIDEO_KBPS : 12000),
+      videoKbps: advancedProfile?.videoKbps ?? null,
+      audioKbps: advancedProfile?.audioKbps,
+      preset: advancedProfile?.preset ?? (isMobile ? 'ultrafast' : 'veryfast'),
+      threads: advancedProfile?.threads ?? (isMobile ? 1 : null),
+      useFastStart: advancedProfile?.useFastStart ?? !isMobile,
+      videoProfile: advancedProfile?.videoProfile ?? (isMobile ? 'baseline' : null),
+      h264Level: advancedProfile?.h264Level ?? (isMobile ? '3.1' : null),
+      stripMetadata: advancedProfile?.stripMetadata ?? true,
+      audioChannels: advancedProfile?.audioChannels ?? 2,
+      audioSampleRate: advancedProfile?.audioSampleRate ?? 44100,
+      pixelFormat: advancedProfile?.pixelFormat ?? 'yuv420p'
+    };
+  }
+
+  function createAdvancedEncodeProfile(): EncodeProfile {
+    const videoKbps = normalizePositiveInteger(advancedVideoKbps);
+    const maxLongEdge = normalizePositiveInteger(advancedMaxLongEdge);
+    const threads = normalizePositiveInteger(advancedThreads);
+
+    return {
+      maxLongEdge: maxLongEdge || undefined,
+      maxVideoKbps: videoKbps || undefined,
+      videoKbps: videoKbps || null,
+      audioKbps: Math.max(16, normalizePositiveInteger(advancedAudioKbps) || 64),
+      preset: advancedPreset,
+      threads: threads || null,
+      useFastStart: advancedFastStart,
+      videoProfile: advancedH264Profile === 'auto' ? null : advancedH264Profile,
+      h264Level: advancedH264Profile === 'baseline' ? '3.1' : null,
+      stripMetadata: advancedStripMetadata,
+      audioChannels: 2,
+      audioSampleRate: 44100,
+      pixelFormat: 'yuv420p'
     };
   }
 
@@ -993,6 +1164,16 @@
     plan: EncodePlan,
     profile?: WebEncodeProfile
   ) {
+    const stripMetadata = plan.stripMetadata ?? profile?.stripMetadata ?? true;
+    const preset = plan.preset ?? profile?.preset ?? 'veryfast';
+    const threads = plan.threads ?? profile?.threads ?? null;
+    const videoProfile = plan.videoProfile ?? profile?.videoProfile ?? null;
+    const h264Level = plan.h264Level ?? profile?.h264Level ?? null;
+    const pixelFormat = plan.pixelFormat ?? profile?.pixelFormat ?? 'yuv420p';
+    const audioChannels = plan.audioChannels ?? profile?.audioChannels ?? 2;
+    const audioSampleRate = plan.audioSampleRate ?? profile?.audioSampleRate ?? 44100;
+    const useFastStart = plan.useFastStart ?? profile?.useFastStart ?? true;
+
     return [
       '-y',
       '-i',
@@ -1003,16 +1184,14 @@
       '0:a:0?',
       '-sn',
       '-dn',
-      '-map_metadata',
-      '-1',
-      '-map_chapters',
-      '-1',
+      ...(stripMetadata ? ['-map_metadata', '-1', '-map_chapters', '-1'] : []),
       '-c:v',
       'libx264',
       '-preset',
-      profile?.preset ?? 'veryfast',
-      ...(profile?.threads ? ['-threads', String(profile.threads)] : []),
-      ...(profile?.videoProfile ? ['-profile:v', profile.videoProfile, '-level', '3.1'] : []),
+      preset,
+      ...(threads ? ['-threads', String(threads)] : []),
+      ...(videoProfile ? ['-profile:v', videoProfile] : []),
+      ...(h264Level ? ['-level', h264Level] : []),
       '-b:v',
       `${plan.videoKbps}k`,
       '-maxrate',
@@ -1021,18 +1200,18 @@
       `${plan.videoKbps * 2}k`,
       ...(plan.width && plan.height ? ['-vf', `scale=${plan.width}:${plan.height}`] : []),
       '-pix_fmt',
-      'yuv420p',
+      pixelFormat,
       '-c:a',
       'aac',
       '-b:a',
       `${plan.audioKbps}k`,
       '-ac',
-      '2',
+      String(audioChannels),
       '-ar',
-      '44100',
+      String(audioSampleRate),
       '-max_muxing_queue_size',
       '1024',
-      ...(profile?.useFastStart === false ? [] : ['-movflags', '+faststart']),
+      ...(useFastStart ? ['-movflags', '+faststart'] : []),
       '-f',
       'mp4',
       outputName
@@ -1041,18 +1220,20 @@
 
   function createEncodePlan(
     info: VideoInfo,
-    target: TargetSize,
-    profile?: WebEncodeProfile
+    target: number,
+    profile?: EncodeProfile
   ): EncodePlan {
     const duration = Number.isFinite(info.duration) && info.duration > 0 ? info.duration : 1;
     const totalKbps = Math.floor(
       ((target * MB * 8) / duration / 1000) * TARGET_BITRATE_UTILIZATION
     );
     const preferredAudio = target <= 8 ? 48 : target <= 16 ? 64 : 96;
-    const audioKbps = Math.max(32, Math.min(preferredAudio, Math.floor(totalKbps * 0.22)));
+    const audioKbps =
+      profile?.audioKbps ?? Math.max(32, Math.min(preferredAudio, Math.floor(totalKbps * 0.22)));
     const videoKbps = Math.max(
       MIN_VIDEO_KBPS,
-      Math.min(profile?.maxVideoKbps ?? Number.POSITIVE_INFINITY, totalKbps - audioKbps)
+      profile?.videoKbps ??
+        Math.min(profile?.maxVideoKbps ?? Number.POSITIVE_INFINITY, totalKbps - audioKbps)
     );
     const scale = chooseScale(info, videoKbps, profile?.maxLongEdge);
 
@@ -1060,7 +1241,16 @@
       audioKbps,
       videoKbps,
       width: scale?.width ?? null,
-      height: scale?.height ?? null
+      height: scale?.height ?? null,
+      preset: profile?.preset ?? null,
+      threads: profile?.threads ?? null,
+      useFastStart: profile?.useFastStart,
+      videoProfile: profile?.videoProfile ?? null,
+      h264Level: profile?.h264Level ?? null,
+      stripMetadata: profile?.stripMetadata,
+      audioChannels: profile?.audioChannels,
+      audioSampleRate: profile?.audioSampleRate,
+      pixelFormat: profile?.pixelFormat
     };
   }
 
@@ -1261,6 +1451,29 @@
 
   function withoutExtension(name: string) {
     return name.replace(/\.[^/.]+$/, '') || 'video';
+  }
+
+  function getOutputFileName(inputName: string, targetMb: number) {
+    const fallbackName = `${withoutExtension(inputName)}-${formatTargetValue(targetMb)}mb`;
+    const rawName = isAdvancedMode ? advancedOutputName.trim() : '';
+    const baseName = sanitizeFileName(rawName || fallbackName) || fallbackName;
+    return baseName.toLowerCase().endsWith('.mp4') ? baseName : `${baseName}.mp4`;
+  }
+
+  function sanitizeFileName(name: string) {
+    return name.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+  }
+
+  function normalizeTargetMb(value: number) {
+    return Math.max(1, Math.min(2_000, Number.isFinite(value) ? value : 8));
+  }
+
+  function normalizePositiveInteger(value: number) {
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  }
+
+  function formatTargetValue(value: number) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
 
   function pathBaseName(path: string) {
@@ -1517,36 +1730,190 @@
         </button>
       </div>
 
-      <div class="grid w-full max-w-2xl grid-cols-2 gap-2 sm:grid-cols-5" aria-label={text.targetAria}>
-        {#each targetSizes as size}
-          <button
-            type="button"
-            class={[
-              'min-h-20 border px-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#fbfbff] disabled:cursor-not-allowed disabled:opacity-60',
-              selectedTarget === size
-                ? 'border-[#fbfbff] bg-[#fbfbff] text-[#1713c8] shadow-[6px_6px_0_rgba(255,255,255,.18)]'
-                : 'border-[#fbfbff]/35 bg-[#1410bd]/70 text-[#fbfbff] hover:border-[#fbfbff] hover:bg-[#1c18d7]'
-            ]}
-            aria-pressed={selectedTarget === size}
-            disabled={isLoadingEngine || isCompressing}
-            onclick={() => {
-              if (!isLoadingEngine && !isCompressing) {
-                selectedTarget = size;
-              }
-            }}
+      {#if isAdvancedMode}
+        <section
+          class="grid w-full max-w-2xl gap-3 border border-[#fbfbff]/35 bg-[#1410bd]/50 p-4"
+          aria-label={text.advanced.settings}
+        >
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-xs font-black uppercase tracking-[0.18em] text-[#d8d7ff]">
+              {text.advanced.settings}
+            </h2>
+            <a
+              class="grid min-h-9 place-items-center border border-[#fbfbff]/35 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+              href={modeHref}
+            >
+              {text.simpleMode}
+            </a>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.target}
+              <input
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-base font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                type="number"
+                min="1"
+                max="2000"
+                step="0.1"
+                bind:value={advancedTargetMb}
+                disabled={isLoadingEngine || isCompressing}
+              />
+            </label>
+
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.outputName}
+              <input
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none placeholder:text-[#d8d7ff]/55 focus:border-[#fbfbff] disabled:opacity-60"
+                type="text"
+                placeholder={text.advanced.outputPlaceholder}
+                bind:value={advancedOutputName}
+                disabled={isLoadingEngine || isCompressing}
+              />
+            </label>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-3">
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.webEngine}
+              <select
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                bind:value={advancedFfmpegCore}
+                disabled={isLoadingEngine || isCompressing || isDesktop}
+              >
+                <option value="auto">{text.advanced.engineAuto}</option>
+                <option value="single">{text.advanced.engineSingle}</option>
+                <option value="multi">{text.advanced.engineMulti}</option>
+              </select>
+            </label>
+
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.preset}
+              <select
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                bind:value={advancedPreset}
+                disabled={isLoadingEngine || isCompressing}
+              >
+                {#each presetOptions as preset}
+                  <option value={preset}>{preset}</option>
+                {/each}
+              </select>
+            </label>
+
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.profile}
+              <select
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                bind:value={advancedH264Profile}
+                disabled={isLoadingEngine || isCompressing}
+              >
+                {#each profileOptions as profile}
+                  <option value={profile}>{profile === 'auto' ? text.advanced.auto : profile}</option>
+                {/each}
+              </select>
+            </label>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-4">
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.videoKbps}
+              <input
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                type="number"
+                min="0"
+                step="100"
+                bind:value={advancedVideoKbps}
+                disabled={isLoadingEngine || isCompressing}
+              />
+            </label>
+
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.audioKbps}
+              <input
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                type="number"
+                min="16"
+                step="16"
+                bind:value={advancedAudioKbps}
+                disabled={isLoadingEngine || isCompressing}
+              />
+            </label>
+
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.maxEdge}
+              <input
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                type="number"
+                min="0"
+                step="2"
+                bind:value={advancedMaxLongEdge}
+                disabled={isLoadingEngine || isCompressing}
+              />
+            </label>
+
+            <label class="grid gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+              {text.advanced.threads}
+              <input
+                class="min-h-11 border border-[#fbfbff]/35 bg-[#0f0ca4] px-3 text-sm font-bold text-[#fbfbff] outline-none focus:border-[#fbfbff] disabled:opacity-60"
+                type="number"
+                min="0"
+                step="1"
+                bind:value={advancedThreads}
+                disabled={isLoadingEngine || isCompressing}
+              />
+            </label>
+          </div>
+
+          <div class="flex flex-wrap gap-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#d8d7ff]">
+            <label class="flex min-h-10 items-center gap-2 border border-[#fbfbff]/25 px-3">
+              <input type="checkbox" bind:checked={advancedFastStart} disabled={isLoadingEngine || isCompressing} />
+              {text.advanced.fastStart}
+            </label>
+            <label class="flex min-h-10 items-center gap-2 border border-[#fbfbff]/25 px-3">
+              <input type="checkbox" bind:checked={advancedStripMetadata} disabled={isLoadingEngine || isCompressing} />
+              {text.advanced.stripMetadata}
+            </label>
+          </div>
+        </section>
+      {:else}
+        <div class="grid w-full max-w-2xl grid-cols-2 gap-2 sm:grid-cols-5" aria-label={text.targetAria}>
+          {#each targetSizes as size}
+            <button
+              type="button"
+              class={[
+                'min-h-20 border px-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#fbfbff] disabled:cursor-not-allowed disabled:opacity-60',
+                selectedTarget === size
+                  ? 'border-[#fbfbff] bg-[#fbfbff] text-[#1713c8] shadow-[6px_6px_0_rgba(255,255,255,.18)]'
+                  : 'border-[#fbfbff]/35 bg-[#1410bd]/70 text-[#fbfbff] hover:border-[#fbfbff] hover:bg-[#1c18d7]'
+              ]}
+              aria-pressed={selectedTarget === size}
+              disabled={isLoadingEngine || isCompressing}
+              onclick={() => {
+                if (!isLoadingEngine && !isCompressing) {
+                  selectedTarget = size;
+                }
+              }}
+            >
+              <span class="block text-2xl font-black">{size}</span>
+              <span class="text-xs uppercase tracking-[0.18em] opacity-75">{text.megabytes}</span>
+            </button>
+          {/each}
+          <a
+            class="flex min-h-20 flex-col justify-center border border-[#fbfbff]/35 bg-[#1410bd]/70 px-3 text-left text-[#fbfbff] transition hover:border-[#fbfbff] hover:bg-[#fbfbff] hover:text-[#1713c8] focus:outline-none focus:ring-2 focus:ring-[#fbfbff]"
+            href={modeHref}
           >
-            <span class="block text-2xl font-black">{size}</span>
-            <span class="text-xs uppercase tracking-[0.18em] opacity-75">{text.megabytes}</span>
-          </button>
-        {/each}
-      </div>
+            <span class="block text-lg font-black uppercase tracking-normal">{text.advancedMode}</span>
+            <span class="text-xs uppercase tracking-[0.18em] opacity-75">FFmpeg</span>
+          </a>
+        </div>
+      {/if}
 
       {#if isVideoAtOrBelowTarget}
         <div
           class="w-full max-w-2xl border border-[#fbfbff]/45 bg-[#fbfbff] px-4 py-3 text-sm font-bold text-[#1713c8]"
           aria-live="polite"
         >
-          {text.alreadyBelowTarget(selectedTarget)}
+          {text.alreadyBelowTarget(effectiveTargetMb)}
         </div>
       {/if}
 

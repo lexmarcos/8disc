@@ -32,6 +32,15 @@ struct EncodePlan {
     audio_kbps: u32,
     width: Option<u32>,
     height: Option<u32>,
+    preset: Option<String>,
+    threads: Option<u32>,
+    use_fast_start: Option<bool>,
+    video_profile: Option<String>,
+    h264_level: Option<String>,
+    strip_metadata: Option<bool>,
+    audio_channels: Option<u8>,
+    audio_sample_rate: Option<u32>,
+    pixel_format: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -343,12 +352,41 @@ fn build_ffmpeg_args(
         "0:v:0".to_string(),
         "-map".to_string(),
         "0:a?".to_string(),
-        "-c:v".to_string(),
-        encoder.to_string(),
+        "-sn".to_string(),
+        "-dn".to_string(),
     ];
 
+    if plan.strip_metadata.unwrap_or(false) {
+        args.extend([
+            "-map_metadata".to_string(),
+            "-1".to_string(),
+            "-map_chapters".to_string(),
+            "-1".to_string(),
+        ]);
+    }
+
+    args.extend([
+        "-c:v".to_string(),
+        encoder.to_string(),
+    ]);
+
     if encoder == "libx264" {
-        args.extend(["-preset".to_string(), "veryfast".to_string()]);
+        args.extend([
+            "-preset".to_string(),
+            plan.preset.clone().unwrap_or_else(|| "veryfast".to_string()),
+        ]);
+    }
+
+    if let Some(threads) = plan.threads.filter(|value| *value > 0) {
+        args.extend(["-threads".to_string(), threads.to_string()]);
+    }
+
+    if let Some(profile) = plan.video_profile.as_ref().filter(|value| !value.is_empty()) {
+        args.extend(["-profile:v".to_string(), profile.clone()]);
+    }
+
+    if let Some(level) = plan.h264_level.as_ref().filter(|value| !value.is_empty()) {
+        args.extend(["-level".to_string(), level.clone()]);
     }
 
     args.extend([
@@ -366,15 +404,28 @@ fn build_ffmpeg_args(
 
     args.extend([
         "-pix_fmt".to_string(),
-        "yuv420p".to_string(),
+        plan.pixel_format
+            .clone()
+            .unwrap_or_else(|| "yuv420p".to_string()),
         "-c:a".to_string(),
         "aac".to_string(),
         "-b:a".to_string(),
         format!("{}k", plan.audio_kbps),
-        "-movflags".to_string(),
-        "+faststart".to_string(),
-        output_path.to_string_lossy().into_owned(),
     ]);
+
+    if let Some(channels) = plan.audio_channels {
+        args.extend(["-ac".to_string(), channels.to_string()]);
+    }
+
+    if let Some(sample_rate) = plan.audio_sample_rate {
+        args.extend(["-ar".to_string(), sample_rate.to_string()]);
+    }
+
+    if plan.use_fast_start.unwrap_or(true) {
+        args.extend(["-movflags".to_string(), "+faststart".to_string()]);
+    }
+
+    args.push(output_path.to_string_lossy().into_owned());
 
     args
 }
