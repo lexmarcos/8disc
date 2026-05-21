@@ -954,22 +954,11 @@
   async function resolveFfmpegCoreConfigs(preference: FfmpegCorePreference) {
     const canUseMultithread = supportsMultithreadEncoder();
 
-    if (preference === 'single') {
+    if (preference === 'single' || preference === 'auto' || !canUseMultithread) {
       return [{ label: 'wasm', config: await loadSingleThreadCore() }];
     }
 
-    if (preference === 'multi' && canUseMultithread) {
-      return [{ label: 'wasm mt', config: await loadMultithreadCore() }];
-    }
-
-    if (canUseMultithread) {
-      return [
-        { label: 'wasm mt', config: await loadMultithreadCore() },
-        { label: 'wasm', config: await loadSingleThreadCore() }
-      ];
-    }
-
-    return [{ label: 'wasm', config: await loadSingleThreadCore() }];
+    return [{ label: 'wasm mt', config: await loadMultithreadCore() }];
   }
 
   function createFfmpegInstance(FFmpeg: FFmpegConstructor) {
