@@ -29,11 +29,22 @@ const contentTypes = new Map([
 ]);
 
 const baseHeaders = {
-  'Cross-Origin-Opener-Policy': 'same-origin',
-  'Cross-Origin-Embedder-Policy': 'require-corp',
-  'Cross-Origin-Resource-Policy': 'same-origin',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'X-Content-Type-Options': 'nosniff'
+};
+
+const crossOriginIsolationHeaders = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp'
+};
+
+const sameOriginResourceHeaders = {
+  'Cross-Origin-Resource-Policy': 'same-origin'
+};
+
+const publicShareAssetHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Cross-Origin-Resource-Policy': 'cross-origin'
 };
 
 function send(response, statusCode, body, headers = {}) {
@@ -78,6 +89,38 @@ function getCacheControl(filePath) {
   return 'public, max-age=3600';
 }
 
+function getRelativeFilePath(filePath) {
+  return path.relative(rootDir, filePath).replaceAll(path.sep, '/');
+}
+
+function isHtmlFile(filePath) {
+  return path.extname(filePath).toLowerCase() === '.html';
+}
+
+function isPublicShareAsset(filePath) {
+  const relativePath = getRelativeFilePath(filePath);
+
+  return (
+    relativePath === 'og-image.jpg' ||
+    relativePath === 'og-image.png' ||
+    relativePath === 'icon.png' ||
+    relativePath === 'apple-touch-icon.png' ||
+    relativePath.startsWith('icons/')
+  );
+}
+
+function getSecurityHeaders(filePath) {
+  if (isHtmlFile(filePath)) {
+    return crossOriginIsolationHeaders;
+  }
+
+  if (isPublicShareAsset(filePath)) {
+    return publicShareAssetHeaders;
+  }
+
+  return sameOriginResourceHeaders;
+}
+
 async function resolveFile(request) {
   const requestedPath = sanitizePathname(request.url);
 
@@ -120,6 +163,7 @@ const server = createServer(async (request, response) => {
     }
 
     const headers = {
+      ...getSecurityHeaders(resolved.filePath),
       'Content-Type': getContentType(resolved.filePath),
       'Content-Length': String(resolved.fileStat.size),
       'Cache-Control': getCacheControl(resolved.filePath)
