@@ -250,6 +250,7 @@
   const SIZE_RETRY_TIGHTENING = 0.96;
   const SIZE_RETRY_EXPANSION = 0.98;
   const MIN_VIDEO_KBPS = 80;
+  const MOBILE_MAX_VIDEO_KBPS = 6000;
   const MIN_VALID_MP4_BYTES = 1024;
   const FFMPEG_LOAD_TIMEOUT_MS = 20_000;
   const videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'];
@@ -863,7 +864,7 @@
       isIOS,
       isMobile,
       maxLongEdge: isMobile ? 854 : 1920,
-      maxVideoKbps: isMobile ? 1400 : 12000,
+      maxVideoKbps: isMobile ? MOBILE_MAX_VIDEO_KBPS : 12000,
       preset: isMobile ? 'ultrafast' : 'veryfast',
       threads: isMobile ? 1 : null,
       useFastStart: !isMobile,
