@@ -52,8 +52,18 @@ function send(response, statusCode, body, headers = {}) {
   response.end(body);
 }
 
+function redirect(response, location) {
+  response.writeHead(308, {
+    ...baseHeaders,
+    Location: location,
+    'Content-Length': '0',
+    'Cache-Control': 'public, max-age=300'
+  });
+  response.end();
+}
+
 function sanitizePathname(requestUrl) {
-  const { pathname } = new URL(requestUrl || '/', `http://${host}:${port}`);
+  const { pathname, search } = new URL(requestUrl || '/', `http://${host}:${port}`);
   const decoded = decodeURIComponent(pathname);
 
   if (decoded.includes('\0')) {
@@ -68,7 +78,7 @@ function sanitizePathname(requestUrl) {
     return null;
   }
 
-  return filePath;
+  return { filePath, pathname, search };
 }
 
 function getContentType(filePath) {
@@ -133,15 +143,24 @@ async function resolveFile(request) {
     return null;
   }
 
+  if (requestedPath.pathname === '/index.html' || requestedPath.pathname.endsWith('/index.html')) {
+    const cleanPath = requestedPath.pathname.slice(0, -'index.html'.length);
+    return { redirectLocation: `${cleanPath}${requestedPath.search}` };
+  }
+
   try {
-    const requestedStat = await stat(requestedPath);
+    const requestedStat = await stat(requestedPath.filePath);
 
     if (requestedStat.isDirectory()) {
-      const indexPath = path.join(requestedPath, 'index.html');
+      if (!requestedPath.pathname.endsWith('/')) {
+        return { redirectLocation: `${requestedPath.pathname}/${requestedPath.search}` };
+      }
+
+      const indexPath = path.join(requestedPath.filePath, 'index.html');
       return { filePath: indexPath, fileStat: await stat(indexPath), statusCode: 200 };
     }
 
-    return { filePath: requestedPath, fileStat: requestedStat, statusCode: 200 };
+    return { filePath: requestedPath.filePath, fileStat: requestedStat, statusCode: 200 };
   } catch {
     const acceptsHtml = request.headers.accept?.includes('text/html') ?? false;
 
@@ -164,6 +183,11 @@ const server = createServer(async (request, response) => {
 
     if (!resolved) {
       send(response, 404, 'Not Found\n', { 'Content-Type': 'text/plain; charset=utf-8' });
+      return;
+    }
+
+    if ('redirectLocation' in resolved) {
+      redirect(response, resolved.redirectLocation);
       return;
     }
 

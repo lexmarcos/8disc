@@ -1,7 +1,7 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
-const fallbackSiteOrigin = 'https://8disc.app';
+const fallbackSiteOrigin = 'https://8disc.pro';
 const siteOrigin = (process.env.PUBLIC_SITE_URL || fallbackSiteOrigin).replace(/\/+$/, '');
 
 /** @type {import('@sveltejs/kit').Config} */
