@@ -176,6 +176,80 @@
       },
       alreadyBelowTarget: (target: number) =>
         `This video is already smaller than ${target} MB, so it cannot be compressed for this target. Choose a smaller target.`,
+      content: {
+        howItWorks: {
+          title: 'How to compress a video for Discord',
+          steps: [
+            'Drop or select your video. MP4, MOV, MKV, WebM, AVI and most other formats are supported.',
+            'Pick a target size — 8 MB, 16 MB, 50 MB or 100 MB — or set a custom size in Advanced mode.',
+            'Press Compress and save the result. Everything runs locally on your device; your video is never uploaded.'
+          ]
+        },
+        whyLocal: {
+          title: 'A video compressor that never uploads your files',
+          description:
+            '8disc compresses video with FFmpeg running directly in your browser through WebAssembly — or with native FFmpeg in the desktop app. Your file never leaves your device, so there is no upload wait, no queue and no privacy risk.',
+          benefits: [
+            '100% private — files are processed on your device, not on a server',
+            'Free, with no watermark, no sign-up and no file limit',
+            'Works offline in the desktop app for Windows and Linux',
+            'Outputs MP4 (H.264 + AAC) that Discord plays inline'
+          ]
+        },
+        discordLimits: {
+          title: 'Discord upload limits',
+          description:
+            "Discord caps uploads by plan and server boost level. Compressing to 8 MB keeps you comfortably under the free limit; the other presets match higher tiers. Limits may change — check Discord's current documentation.",
+          headers: ['Plan', 'Upload limit', 'Preset'],
+          rows: [
+            ['Free', '10 MB', '8 MB'],
+            ['Nitro Basic', '50 MB', '50 MB'],
+            ['Nitro', '500 MB', '100 MB'],
+            ['Server boost level 2', '50 MB', '50 MB'],
+            ['Server boost level 3', '100 MB', '100 MB']
+          ]
+        },
+        faq: {
+          title: 'Frequently asked questions',
+          items: [
+            {
+              question: 'How do I compress a video to 8 MB for Discord?',
+              answer:
+                'Drop the video on this page, keep the 8 MB preset selected and press Compress. 8disc calculates the right bitrate and resolution so the output lands just under 8 MB, then lets you download the compressed MP4.'
+            },
+            {
+              question: 'Is my video uploaded to a server?',
+              answer:
+                'No. Compression runs entirely on your device — in the browser through WebAssembly FFmpeg, or with native FFmpeg in the desktop app. Nothing is sent anywhere.'
+            },
+            {
+              question: 'Which video formats are supported?',
+              answer:
+                'MP4, MOV, MKV, WebM, AVI and most formats FFmpeg can read. The output is always an MP4 with H.264 video and AAC audio, which Discord previews and plays inline.'
+            },
+            {
+              question: "Why compress to 8 MB if Discord's free limit is 10 MB?",
+              answer:
+                'Targeting 8 MB leaves a safety margin so the finished file never exceeds the limit, even when the encoder slightly overshoots. It also keeps older 8 MB-era servers and other platforms covered.'
+            },
+            {
+              question: 'Will compression reduce my video quality?',
+              answer:
+                'Reducing file size always trades some quality. 8disc picks the best bitrate for the target size and only downscales resolution when needed, so the result stays as sharp as the size budget allows. Larger targets like 50 MB or 100 MB preserve much more detail.'
+            },
+            {
+              question: 'Is 8disc really free?',
+              answer:
+                'Yes. There is no watermark, no account, no file-size cap and no daily limit. It is a local tool — your hardware does the work.'
+            },
+            {
+              question: 'Is there a desktop app?',
+              answer:
+                'Yes. The desktop app for Windows and Linux uses native FFmpeg, can use your GPU for faster encoding and works fully offline.'
+            }
+          ]
+        }
+      },
       createdBy: 'Created by Markzuel',
       social: {
         github: 'Markzuel on GitHub',
@@ -265,6 +339,80 @@
       },
       alreadyBelowTarget: (target: number) =>
         `Este video ja esta menor que ${target} MB, entao nao e possivel comprimir para esse alvo. Escolha um alvo menor.`,
+      content: {
+        howItWorks: {
+          title: 'Como comprimir um vídeo para o Discord',
+          steps: [
+            'Arraste ou selecione seu vídeo. MP4, MOV, MKV, WebM, AVI e a maioria dos outros formatos são aceitos.',
+            'Escolha o tamanho final — 8 MB, 16 MB, 50 MB ou 100 MB — ou defina um valor personalizado no modo Avançado.',
+            'Clique em Comprimir e salve o resultado. Tudo roda localmente no seu dispositivo; seu vídeo nunca é enviado para nenhum servidor.'
+          ]
+        },
+        whyLocal: {
+          title: 'Um compressor de vídeo que nunca envia seus arquivos',
+          description:
+            'O 8disc comprime vídeo com o FFmpeg rodando direto no seu navegador via WebAssembly — ou com FFmpeg nativo no aplicativo para desktop. Seu arquivo nunca sai do seu dispositivo: sem espera de upload, sem fila e sem risco de privacidade.',
+          benefits: [
+            '100% privado — os arquivos são processados no seu dispositivo, não em um servidor',
+            "Grátis, sem marca d'água, sem cadastro e sem limite de arquivos",
+            'Funciona offline no aplicativo para Windows e Linux',
+            'Gera MP4 (H.264 + AAC) que o Discord reproduz direto no chat'
+          ]
+        },
+        discordLimits: {
+          title: 'Limites de upload do Discord',
+          description:
+            'O Discord limita uploads conforme o plano e o nível de impulso do servidor. Comprimir para 8 MB deixa você com folga dentro do limite gratuito; os outros presets atendem aos planos maiores. Os limites podem mudar — confira a documentação atual do Discord.',
+          headers: ['Plano', 'Limite de upload', 'Preset'],
+          rows: [
+            ['Grátis', '10 MB', '8 MB'],
+            ['Nitro Basic', '50 MB', '50 MB'],
+            ['Nitro', '500 MB', '100 MB'],
+            ['Impulso de servidor nível 2', '50 MB', '50 MB'],
+            ['Impulso de servidor nível 3', '100 MB', '100 MB']
+          ]
+        },
+        faq: {
+          title: 'Perguntas frequentes',
+          items: [
+            {
+              question: 'Como comprimir um vídeo para 8 MB para o Discord?',
+              answer:
+                'Arraste o vídeo para esta página, mantenha o preset de 8 MB selecionado e clique em Comprimir. O 8disc calcula o bitrate e a resolução certos para o arquivo ficar logo abaixo de 8 MB e libera o download do MP4 comprimido.'
+            },
+            {
+              question: 'Meu vídeo é enviado para algum servidor?',
+              answer:
+                'Não. A compressão roda inteiramente no seu dispositivo — no navegador via FFmpeg em WebAssembly, ou com FFmpeg nativo no aplicativo para desktop. Nada é enviado para lugar nenhum.'
+            },
+            {
+              question: 'Quais formatos de vídeo são aceitos?',
+              answer:
+                'MP4, MOV, MKV, WebM, AVI e a maioria dos formatos que o FFmpeg lê. A saída é sempre um MP4 com vídeo H.264 e áudio AAC, que o Discord reproduz direto no chat.'
+            },
+            {
+              question: 'Por que comprimir para 8 MB se o limite gratuito do Discord é 10 MB?',
+              answer:
+                'Mirar em 8 MB deixa uma margem de segurança para o arquivo final nunca passar do limite, mesmo se o encoder estourar um pouco. Também cobre servidores antigos da época dos 8 MB e outras plataformas.'
+            },
+            {
+              question: 'A compressão reduz a qualidade do vídeo?',
+              answer:
+                'Reduzir o tamanho sempre custa alguma qualidade. O 8disc escolhe o melhor bitrate para o tamanho alvo e só reduz a resolução quando necessário, mantendo a nitidez que o orçamento de tamanho permite. Alvos maiores, como 50 MB ou 100 MB, preservam muito mais detalhe.'
+            },
+            {
+              question: 'O 8disc é mesmo grátis?',
+              answer:
+                "Sim. Sem marca d'água, sem cadastro, sem limite de tamanho e sem limite diário. É uma ferramenta local — quem trabalha é o seu hardware."
+            },
+            {
+              question: 'Existe aplicativo para desktop?',
+              answer:
+                'Sim. O aplicativo para Windows e Linux usa FFmpeg nativo, pode usar a GPU para codificar mais rápido e funciona totalmente offline.'
+            }
+          ]
+        }
+      },
       createdBy: 'Criado por Markzuel',
       social: {
         github: 'Markzuel no GitHub',
@@ -422,7 +570,7 @@
   );
   let pageUrl = $derived(absoluteUrl(canonicalPath));
   let ogImageUrl = $derived(absoluteUrl(ogImagePath));
-  let structuredData = $derived(createStructuredData(text, pageUrl, ogImageUrl));
+  let structuredData = $derived(createStructuredData(text, pageUrl, ogImageUrl, !isAdvancedMode));
   let selectedVideoName = $derived(desktopVideo?.name ?? videoFile?.name ?? '');
   let selectedVideoSize = $derived(desktopVideo?.size ?? videoFile?.size ?? 0);
   let hasSelectedVideo = $derived(Boolean(desktopVideo || videoFile));
@@ -549,41 +697,60 @@
   function createStructuredData(
     currentText: Translation,
     currentPageUrl: string,
-    currentOgImageUrl: string
+    currentOgImageUrl: string,
+    includeFaq: boolean
   ) {
-    return JSON.stringify({
-      '@context': 'https://schema.org',
-      '@type': 'WebApplication',
-      name: siteName,
-      alternateName: '8disc video compressor',
-      url: currentPageUrl,
-      image: currentOgImageUrl,
-      screenshot: currentOgImageUrl,
-      description: currentText.metaDescription,
-      inLanguage: currentText.htmlLang,
-      applicationCategory: 'MultimediaApplication',
-      applicationSubCategory: 'Video compressor',
-      operatingSystem: 'Web, Windows, Linux',
-      browserRequirements: 'Requires JavaScript and WebAssembly for browser compression.',
-      isAccessibleForFree: true,
-      featureList: currentText.structuredFeatures,
-      offers: {
-        '@type': 'Offer',
-        price: '0',
-        priceCurrency: 'USD'
+    return JSON.stringify([
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebApplication',
+        name: siteName,
+        alternateName: '8disc video compressor',
+        url: currentPageUrl,
+        image: currentOgImageUrl,
+        screenshot: currentOgImageUrl,
+        description: currentText.metaDescription,
+        inLanguage: currentText.htmlLang,
+        applicationCategory: 'MultimediaApplication',
+        applicationSubCategory: 'Video compressor',
+        operatingSystem: 'Web, Windows, Linux',
+        browserRequirements: 'Requires JavaScript and WebAssembly for browser compression.',
+        isAccessibleForFree: true,
+        featureList: currentText.structuredFeatures,
+        offers: {
+          '@type': 'Offer',
+          price: '0',
+          priceCurrency: 'USD'
+        },
+        creator: {
+          '@type': 'Person',
+          name: 'Markzuel',
+          url: 'https://github.com/lexmarcos'
+        },
+        sameAs: sameAsLinks,
+        potentialAction: {
+          '@type': 'UseAction',
+          name: currentText.compress,
+          target: currentPageUrl
+        }
       },
-      creator: {
-        '@type': 'Person',
-        name: 'Markzuel',
-        url: 'https://github.com/lexmarcos'
-      },
-      sameAs: sameAsLinks,
-      potentialAction: {
-        '@type': 'UseAction',
-        name: currentText.compress,
-        target: currentPageUrl
-      }
-    }).replace(/</g, '\\u003c');
+      ...(includeFaq
+        ? [
+            {
+              '@context': 'https://schema.org',
+              '@type': 'FAQPage',
+              mainEntity: currentText.content.faq.items.map((item) => ({
+                '@type': 'Question',
+                name: item.question,
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: item.answer
+                }
+              }))
+            }
+          ]
+        : [])
+    ]).replace(/</g, '\\u003c');
   }
 
   function isStatusKey(value: string): value is StatusKey {
@@ -2069,6 +2236,85 @@
         {/if}
       </div>
     </section>
+
+    {#if !isAdvancedMode}
+      {#if !isDesktop}
+        <div class="w-full border-t border-[#fbfbff]/20 py-10 text-sm leading-6 text-[#d8d7ff] sm:py-12">
+          <section aria-labelledby="how-it-works-title">
+            <p class="text-[11px] font-black uppercase tracking-[0.18em] text-[#d8d7ff]">8disc</p>
+            <h2 id="how-it-works-title" class="mt-2 text-xl font-black tracking-normal text-[#fbfbff] sm:text-2xl">
+              {text.content.howItWorks.title}
+            </h2>
+            <ol class="mt-5 grid gap-4 sm:grid-cols-3">
+              {#each text.content.howItWorks.steps as step, index}
+                <li class="border-t border-[#fbfbff]/20 pt-3">
+                  <h3 class="text-[11px] font-black uppercase tracking-[0.18em] text-[#fbfbff]">0{index + 1}</h3>
+                  <p class="mt-2">{step}</p>
+                </li>
+              {/each}
+            </ol>
+          </section>
+
+          <section class="mt-10 border-t border-[#fbfbff]/20 pt-10" aria-labelledby="why-local-title">
+            <p class="text-[11px] font-black uppercase tracking-[0.18em] text-[#d8d7ff]">local / private</p>
+            <h2 id="why-local-title" class="mt-2 text-xl font-black tracking-normal text-[#fbfbff] sm:text-2xl">
+              {text.content.whyLocal.title}
+            </h2>
+            <p class="mt-4 max-w-3xl">{text.content.whyLocal.description}</p>
+            <ul class="mt-5 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+              {#each text.content.whyLocal.benefits as benefit}
+                <li class="border-l border-[#fbfbff]/20 pl-3">{benefit}</li>
+              {/each}
+            </ul>
+          </section>
+
+          <section class="mt-10 border-t border-[#fbfbff]/20 pt-10" aria-labelledby="discord-limits-title">
+            <p class="text-[11px] font-black uppercase tracking-[0.18em] text-[#d8d7ff]">discord</p>
+            <h2 id="discord-limits-title" class="mt-2 text-xl font-black tracking-normal text-[#fbfbff] sm:text-2xl">
+              {text.content.discordLimits.title}
+            </h2>
+            <p class="mt-4 max-w-3xl">{text.content.discordLimits.description}</p>
+            <div class="mt-5 overflow-x-auto border border-[#fbfbff]/20">
+              <table class="w-full min-w-125 border-collapse text-left text-xs">
+                <thead class="border-b border-[#fbfbff]/20 text-[11px] font-black uppercase tracking-[0.18em] text-[#fbfbff]">
+                  <tr>
+                    {#each text.content.discordLimits.headers as header}
+                      <th class="px-3 py-3 font-black">{header}</th>
+                    {/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each text.content.discordLimits.rows as row}
+                    <tr class="border-b border-[#fbfbff]/20 last:border-b-0">
+                      {#each row as value}
+                        <td class="px-3 py-3">{value}</td>
+                      {/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="mt-10 border-t border-[#fbfbff]/20 pt-10" aria-labelledby="faq-title">
+            <p class="text-[11px] font-black uppercase tracking-[0.18em] text-[#d8d7ff]">faq</p>
+            <h2 id="faq-title" class="mt-2 text-xl font-black tracking-normal text-[#fbfbff] sm:text-2xl">
+              {text.content.faq.title}
+            </h2>
+            <div class="mt-5 border-t border-[#fbfbff]/20">
+              {#each text.content.faq.items as item}
+                <details class="border-b border-[#fbfbff]/20">
+                  <summary class="cursor-pointer py-4 pr-8 text-sm font-bold text-[#fbfbff] marker:text-[#d8d7ff]">
+                    {item.question}
+                  </summary>
+                  <p class="pb-4 pr-8">{item.answer}</p>
+                </details>
+              {/each}
+            </div>
+          </section>
+        </div>
+      {/if}
+    {/if}
 
     <footer class="flex flex-col items-center justify-between gap-4 border-t border-[#fbfbff]/25 py-5 text-[#d8d7ff] sm:flex-row">
       <p class="text-xs font-bold uppercase tracking-[0.18em]">{text.createdBy}</p>

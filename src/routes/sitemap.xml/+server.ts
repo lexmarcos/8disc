@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 
 export const prerender = true;
 
-const lastmod = '2026-05-21';
+const lastmod = '2026-07-17';
 type SitemapAlternatePage = {
   hreflang: string;
   path: string;
@@ -56,7 +56,7 @@ function urlEntry(
 
 export const GET: RequestHandler = () => {
   const body = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="https://www.w3.org/1999/xhtml">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   ${urlEntry('/', '1.0')}
   ${urlEntry('/pt/', '0.9')}
   ${urlEntry('/advanced/', '0.8', advancedLocalizedPages, '/advanced/')}
